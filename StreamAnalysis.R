@@ -35,3 +35,25 @@ colnames(insectData) <- c("SampleStationID","SampleDate","InsectID","InsectCount
 #Merge insect and algae data.
 bioData <- join(algaeData,insectData,by=c("SampleStationID","SampleDate"))
 bioData <- na.omit(bioData)
+
+#Read in chemical data for the test sites.
+chemDataRAW <- read.table("Chem_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T)
+#Subset columns.
+chemData <- chemDataRAW[,-c(2,4:12,14,16,18,21:27)]
+names(chemData)[names(chemData)=="Sample.Station.ID"]<-"SampleStationID"
+chemData <- na.omit(chemData)
+
+#Merge chemical and biological data.
+biochemData <- join(bioData,chemData,by=c("SampleStationID","SampleDate"))
+
+setwd("~/Desktop/SCCWRP/DNA_Sites/")
+#Read in geospatial data.
+GISDataRAW <- read.table("GIS_dnaSites.csv", header=TRUE, sep=",",as.is=T)
+#Subset columns of interest.
+GISData <- GISDataRAW[,-c(2:5,8:10,15)]
+names(GISData)[names(GISData)=="Sample.Station.ID"]<-"SampleStationID"
+names(GISData)[names(GISData)=="New_Lat"]<-"Latitude"
+names(GISData)[names(GISData)=="New_Long"]<-"Longitude"
+#Merge geospatial data with biological observations.
+GISBiochemData <- join(GISData,biochemData,by="SampleStationID")
+GISBiochemData <- na.omit(GISBiochemData)
