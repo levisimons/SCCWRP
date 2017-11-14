@@ -25,11 +25,12 @@ algaeData <- algaeData[order(algaeData$SampleDate),]
 algaeData$UniqueID <- with(algaeData,paste(SampleStationID,SampleDate))
 #Initialize a diversity data frame in order to calculate and store alpha diversity
 #measures for each unique ID in a data set.
-algaeDiversity <- as.data.frame(matrix(ncol=2,nrow=length(unique(algaeData$UniqueID))))
-colnames(algaeDiversity) <- c("UniqueID","ShannonIndex")
+algaeDiversity <- as.data.frame(matrix(ncol=3,nrow=length(unique(algaeData$UniqueID))))
+colnames(algaeDiversity) <- c("UniqueID","AlgaeShannonIndex","AlgaeInvSimpsonIndex")
 for(ID in unique(algaeData$UniqueID)){
   Shannon=diversity(algaeData[algaeData$UniqueID==ID,]$AlgaeRAbund)
-  algaeDiversity[ID,] <- c(ID,Shannon)
+  InvSimpson=diversity(algaeData[algaeData$UniqueID==ID,]$AlgaeRAbund,index="invsimpson")
+  algaeDiversity[ID,] <- c(ID,Shannon,InvSimpson)
 }
 algaeDiversity <- na.omit(algaeDiversity)
 #Merge alpha diversity measures onto the algal data set.
@@ -49,9 +50,23 @@ insectData$InsectRAbund <- with(insectData,BAResult/InsectCountTotal)
 colnames(insectData) <- c("SampleStationID","SampleDate","InsectID","InsectCount","InsectCountTotal","InsectRAbund")
 insectData <- insectData[order(insectData$SampleStationID),]
 insectData <- insectData[order(insectData$SampleDate),]
+#Create unique ID combining the sample site ID with the sample date
+insectData$UniqueID <- with(insectData,paste(SampleStationID,SampleDate))
+#Initialize a diversity data frame in order to calculate and store alpha diversity
+#measures for each unique ID in a data set.
+insectDiversity <- as.data.frame(matrix(ncol=3,nrow=length(unique(insectData$UniqueID))))
+colnames(insectDiversity) <- c("UniqueID","InsectShannonIndex","InsectInvSimpsonIndex")
+for(ID in unique(insectData$UniqueID)){
+  Shannon=diversity(insectData[insectData$UniqueID==ID,]$InsectRAbund)
+  InvSimpson=diversity(insectData[insectData$UniqueID==ID,]$InsectRAbund,index="invsimpson")
+  insectDiversity[ID,] <- c(ID,Shannon,InvSimpson)
+}
+insectDiversity <- na.omit(insectDiversity)
+#Merge alpha diversity measures onto the algal data set.
+insectData <- join(insectData,insectDiversity,by="UniqueID")
 
 #Merge insect and algae data.
-bioData <- merge(algaeData,insectData,by=c("SampleStationID","SampleDate"),all.x=TRUE, all.y=FALSE)
+bioData <- merge(x=algaeData,y=insectData)
 bioData <- na.omit(bioData)
 
 #Read in chemical data for the test sites.
