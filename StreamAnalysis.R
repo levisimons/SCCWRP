@@ -7,67 +7,108 @@ library("vegan")
 library("microbiome")
 library(data.table)
 
-setwd("~/Desktop/SCCWRP/DNA_Sites/SMC")
-#Read in algae from SMC sites.
-#Merge data into a single frame for biological observations.
-algaeDataRAW <- read.table("AlgaeTax_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T)
-#Subset columns of interest.
-algaeData <- algaeDataRAW[,c(1,3,34,40,43)]
-#Remove rows with missing data.
-algaeData <- na.omit(algaeData)
+setwd("~/Desktop/SCCWRP")
+#Read in algae data from SMC sites.
+algaeDataSMCRaw <- read.table("AlgaeTax_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset columns of interest for the SMC sites.
+algaeDataSMC <- algaeDataSMCRaw[,c(1,3,43,40,34)]
+#Change the header name for station ID.
+names(algaeDataSMC)[names(algaeDataSMC)=="Sample Station ID"]<-"SampleStationID"
 #Calculate the relative abundance of algae data.
-algaeData$AlgaeRAbund <- with(algaeData,BAResult/ActualOrganismCount)
-colnames(algaeData) <- c("SampleStationID","SampleDate","AlgaeCountTotal","AlgaeID","AlgaeCount","AlgaeRAbund")
-#Sort dataframe by Sample station ID and then by date.
-algaeData <- algaeData[order(algaeData$SampleStationID),]
-algaeData <- algaeData[order(algaeData$SampleDate),]
-#Create unique ID combining the sample site ID with the sample date
-algaeData$UniqueID <- with(algaeData,paste(SampleStationID,SampleDate))
-#Initialize a diversity data frame in order to calculate and store alpha diversity
-#measures for each unique ID in a data set.
-algaeDiversity <- as.data.frame(matrix(ncol=3,nrow=length(unique(algaeData$UniqueID))))
-colnames(algaeDiversity) <- c("UniqueID","AlgaeShannonIndex","AlgaeInvSimpsonIndex")
-for(ID in unique(algaeData$UniqueID)){
-  Shannon=diversity(algaeData[algaeData$UniqueID==ID,]$AlgaeRAbund)
-  InvSimpson=diversity(algaeData[algaeData$UniqueID==ID,]$AlgaeRAbund,index="invsimpson")
-  algaeDiversity[ID,] <- c(ID,Shannon,InvSimpson)
-}
-algaeDiversity <- na.omit(algaeDiversity)
-#Merge alpha diversity measures onto the algal data set.
-algaeData <- join(algaeData,algaeDiversity,by="UniqueID")
+algaeDataSMC$RAbund <- with(algaeDataSMC,BAResult/ActualOrganismCount)
+#Add organism type for later use in merged data sets.
+algaeDataSMC$OrganismType <- with(algaeDataSMC,"algae")
+
+#Read in algae data from CEDEN sites.
+algaeDataCEDENRaw <- read.table("AlgaeTax_dnaSites_CEDEN.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset columns of interest for the CEDEN sites.
+algaeDataCEDEN <- algaeDataCEDENRaw[,c(6,11,36,32)]
+#Fix the date format.
+algaeDataCEDEN$SampleDate <- factor(gsub("-","/",algaeDataCEDEN$SampleDate))
+#Remove rows with blank data.
+algaeDataCEDEN <- na.omit(algaeDataCEDEN)
+#Change names to uniforma schema.
+names(algaeDataCEDEN)[names(algaeDataCEDEN)=="StationCode"]<-"SampleStationID"
+names(algaeDataCEDEN)[names(algaeDataCEDEN)=="Species"]<-"FinalID"
+#Determine the algal totals count column and make it a temporary dataframe.
+tmp <- ddply(algaeDataCEDEN,"SampleStationID",numcolwise(sum))[c(1,2)]
+colnames(tmp) <- c("SampleStationID","ActualOrganismCount")
+#Add algal totals count column to insect dataframe.
+algaeDataCEDEN <- merge(algaeDataCEDEN,tmp,"SampleStationID")
+#Calculate the relative abundance of algae data.
+algaeDataCEDEN$RAbund <- with(algaeDataCEDEN,BAResult/ActualOrganismCount)
+#Add organism type for later use in merged data sets.
+algaeDataCEDEN$OrganismType <- with(algaeDataCEDEN,"algae")
+
+#The SWAMP data file is in a somewhat irregular format and this is accounted for
+#when being read in.
+algaeDataSWAMPRaw <- read.table("AlgaeTaxonomy_dnaSamples_SWAMP.csv", fill=TRUE,header=TRUE, sep=",",as.is=T,check.names=FALSE)
+algaeDataSWAMP <- algaeDataSWAMPRaw[,c(6,8,97,90,73)]
+algaeDataSWAMP <- na.omit(algaeDataSWAMP)
+#Change names to uniforma schema.
+names(algaeDataSWAMP)[names(algaeDataSWAMP)=="StationCode"]<-"SampleStationID"
+#Calculate the relative abundance of algae data.
+algaeDataSWAMP$RAbund <- with(algaeDataSWAMP,BAResult/ActualOrganismCount)
+#Add organism type for later use in merged data sets.
+algaeDataSWAMP$OrganismType <- with(algaeDataSWAMP,"algae")
+
+#Create merged algae data set.
+algaeData <- do.call("rbind",list(algaeDataSMC,algaeDataSWAMP,algaeDataCEDEN))
+algaeData <- na.omit(algaeData)
+#Make the date format uniform
+algaeData$SampleDate <- sub("-","/",algaeData$SampleDate)
 
 #Read in insect data from SMC sites.
-insectDataRAW <- read.table("BugTax_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T)
+insectDataSMCRAW <- read.table("BugTax_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
 #Subset columns of interest.
-insectData <- insectDataRAW[,c(1,3,6,9)]
+insectDataSMC <- insectDataSMCRAW[,c(1,3,9,6)]
+#Change names to uniforma schema.
+names(insectDataSMC)[names(insectDataSMC)=="Sample Station ID"]<-"SampleStationID"
 #Determine the insect totals count column and make it a temporary dataframe.
-tmp <- ddply(insectDataRAW,"Sample.Station.ID",numcolwise(sum))[c(1,4)]
-colnames(tmp) <- c("Sample.Station.ID","InsectCountTotal")
+tmp <- ddply(insectDataSMC,"SampleStationID",numcolwise(sum))[c(1,2)]
+colnames(tmp) <- c("SampleStationID","ActualOrganismCount")
 #Add insect totals count column to insect dataframe.
-insectData <- merge(insectData,tmp,"Sample.Station.ID")
+insectDataSMC <- merge(insectDataSMC,tmp,"SampleStationID")
 #Calculate the relative abundance of insect data.
-insectData$InsectRAbund <- with(insectData,BAResult/InsectCountTotal)
-colnames(insectData) <- c("SampleStationID","SampleDate","InsectID","InsectCount","InsectCountTotal","InsectRAbund")
-insectData <- insectData[order(insectData$SampleStationID),]
-insectData <- insectData[order(insectData$SampleDate),]
-#Create unique ID combining the sample site ID with the sample date
-insectData$UniqueID <- with(insectData,paste(SampleStationID,SampleDate))
-#Initialize a diversity data frame in order to calculate and store alpha diversity
-#measures for each unique ID in a data set.
-insectDiversity <- as.data.frame(matrix(ncol=3,nrow=length(unique(insectData$UniqueID))))
-colnames(insectDiversity) <- c("UniqueID","InsectShannonIndex","InsectInvSimpsonIndex")
-for(ID in unique(insectData$UniqueID)){
-  Shannon=diversity(insectData[insectData$UniqueID==ID,]$InsectRAbund)
-  InvSimpson=diversity(insectData[insectData$UniqueID==ID,]$InsectRAbund,index="invsimpson")
-  insectDiversity[ID,] <- c(ID,Shannon,InvSimpson)
-}
-insectDiversity <- na.omit(insectDiversity)
-#Merge alpha diversity measures onto the algal data set.
-insectData <- join(insectData,insectDiversity,by="UniqueID")
+insectDataSMC$RAbund <- with(insectDataSMC,BAResult/ActualOrganismCount)
+#Add organism type for later use in merged data sets.
+insectDataSMC$OrganismType <- with(insectDataSMC,"invertebrate")
+
+#Read in insect data from CEDEN sites.
+insectDataCEDENRAW <- read.table("BugTax_dnaSites_CEDEN.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset columns of interest.
+insectDataCEDEN <- insectDataCEDENRAW[,c(6,11,36,26)]
+#Change names to uniforma schema.
+names(insectDataCEDEN)[names(insectDataCEDEN)=="StationCode"]<-"SampleStationID"
+#Determine the insect totals count column and make it a temporary dataframe.
+tmp <- ddply(insectDataCEDEN,"SampleStationID",numcolwise(sum))[c(1,2)]
+colnames(tmp) <- c("SampleStationID","ActualOrganismCount")
+#Add insect totals count column to insect dataframe.
+insectDataCEDEN <- merge(insectDataCEDEN,tmp,"SampleStationID")
+#Calculate the relative abundance of insect data.
+insectDataCEDEN$RAbund <- with(insectDataCEDEN,BAResult/ActualOrganismCount)
+#Add organism type for later use in merged data sets.
+insectDataCEDEN$OrganismType <- with(insectDataCEDEN,"invertebrate")
+
+#Read in insect data from SWAMP sites.
+insectDataSWAMPRAW <- read.table("BugTaxonomy_dnaSamples_SWAMP.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+#Subset columns of interest.
+insectDataSWAMP <- insectDataSWAMPRAW[,c(1,8,97,90,73)]
+#Change names to uniforma schema.
+names(insectDataSWAMP)[names(insectDataSWAMP)=="Sample Station ID"]<-"SampleStationID"
+#Calculate the relative abundance of insect data.
+insectDataSWAMP$RAbund <- with(insectDataSWAMP,BAResult/ActualOrganismCount)
+#Add organism type for later use in merged data sets.
+insectDataSWAMP$OrganismType <- with(insectDataSWAMP,"invertebrate")
+
+#Create merged insect data set.
+insectData <- do.call("rbind",list(insectDataSMC,insectDataSWAMP,insectDataCEDEN))
+insectData <- na.omit(insectData)
+#Make the date format uniform
+insectData$SampleDate <- sub("-","/",insectData$SampleDate)
 
 #Merge insect and algae data.
-bioData <- merge(x=algaeData,y=insectData)
-bioData <- na.omit(bioData)
+bioData <- do.call("rbind",list(insectData,algaeData))
 
 #Read in chemical data for the test sites.
 chemDataRAW <- read.table("Chem_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T)
@@ -79,7 +120,6 @@ chemData <- na.omit(chemData)
 #Merge chemical and biological data.
 biochemData <- join(bioData,chemData,by=c("SampleStationID","SampleDate"))
 
-setwd("~/Desktop/SCCWRP/DNA_Sites/")
 #Read in geospatial data.
 GISDataRAW <- read.table("GIS_dnaSites.csv", header=TRUE, sep=",",as.is=T)
 #Subset columns of interest.
