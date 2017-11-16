@@ -111,27 +111,53 @@ insectData$SampleDate <- sub("-","/",insectData$SampleDate)
 bioData <- do.call("rbind",list(insectData,algaeData))
 
 #Read in chemical data for the test sites.
-chemDataRAW <- read.table("Chem_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T)
+chemDataRAW <- read.table("Chem_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
 #Subset columns.
 chemData <- chemDataRAW[,-c(2,4:12,14,16,18,21:27)]
-names(chemData)[names(chemData)=="Sample.Station.ID"]<-"SampleStationID"
+names(chemData)[names(chemData)=="Sample Station ID"]<-"SampleStationID"
 chemData <- na.omit(chemData)
 
 #Merge chemical and biological data.
-biochemData <- join(bioData,chemData,by=c("SampleStationID","SampleDate"))
+biochemData <- join(bioData,chemData,by="SampleStationID")
 
 #Read in geospatial data.
-GISDataRAW <- read.table("GIS_dnaSites.csv", header=TRUE, sep=",",as.is=T)
+GISDataRAW <- read.table("GIS_dnaSites.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
 #Subset columns of interest.
 GISData <- GISDataRAW[,-c(2:5,8:10,15)]
-names(GISData)[names(GISData)=="Sample.Station.ID"]<-"SampleStationID"
+names(GISData)[names(GISData)=="Sample Station ID"]<-"SampleStationID"
 names(GISData)[names(GISData)=="New_Lat"]<-"Latitude"
 names(GISData)[names(GISData)=="New_Long"]<-"Longitude"
 GISData <- na.omit(GISData)
 #Merge geospatial data with biological observations.
 GISBiochemData <- join(biochemData,GISData,by="SampleStationID")
-GISBiochemData <- GISBiochemData[,-c(55:59,87:89,108)]
+GISBiochemData <- GISBiochemData[,-c(8:16,55:59,76:84,87:89,108)]
 GISBiochemData <- na.omit(GISBiochemData)
 
 #Calculate land usage index based on 1K, 5K, and catchment zone values.
 GISBiochemData$LU_2011_1K <- with(GISBiochemData,Ag_2011_1K+CODE_21_2011_1K+URBAN_2011_1K)
+GISBiochemData$LU_2011_5K <- with(GISBiochemData,Ag_2011_5K+CODE_21_2011_5K+URBAN_2011_5K)
+GISBiochemData$LU_2011_WS <- with(GISBiochemData,Ag_2011_WS+CODE_21_2011_WS+URBAN_2011_WS)
+
+#Subset site data based on land usage index within 1K catchment zones.
+#LD = low disturbance.  Land usage index is less than 5%.
+GISBiochemDataLD1K <- GISBiochemData[which(GISBiochemData$LU_2011_1K < 5),]
+#MD = low disturbance.  Land usage index is between 5% and 15%.
+GISBiochemDataMD1K <- GISBiochemData[which(GISBiochemData$LU_2011_1K < 15 & GISBiochemData$LU_2011_1K >= 5),]
+#HD = low disturbance.  Land usage index is greater than 15%.
+GISBiochemDataHD1K <- GISBiochemData[which(GISBiochemData$LU_2011_1K >= 15),]
+
+#Subset site data based on land usage index within 5K catchment zones.
+#LD = low disturbance.  Land usage index is less than 5%.
+GISBiochemDataLD5K <- GISBiochemData[which(GISBiochemData$LU_2011_5K < 5),]
+#MD = low disturbance.  Land usage index is between 5% and 15%.
+GISBiochemDataMD5K <- GISBiochemData[which(GISBiochemData$LU_2011_5K < 15 & GISBiochemData$LU_2011_5K >= 5),]
+#HD = low disturbance.  Land usage index is greater than 15%.
+GISBiochemDataHD5K <- GISBiochemData[which(GISBiochemData$LU_2011_5K >= 15),]
+
+#Subset site data based on land usage index within the full water drainage catchment zones.
+#LD = low disturbance.  Land usage index is less than 5%.
+GISBiochemDataLDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 5),]
+#MD = low disturbance.  Land usage index is between 5% and 15%.
+GISBiochemDataMDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 15 & GISBiochemData$LU_2011_WS >= 5),]
+#HD = low disturbance.  Land usage index is greater than 15%.
+GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
