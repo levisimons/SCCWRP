@@ -188,6 +188,8 @@ HD1K <- as.data.frame(unique(GISBiochemDataHD1K$FinalID))
 names(HD1K)[names(HD1K)=="unique(GISBiochemDataHD1K$FinalID)"]<-"FinalID"
 HD1K[order(HD1K$FinalID),]
 
+#Add the relative taxa abundances by column to a new dataframe.
+#The rows are the unique taxa in a given subset of data.
 i=1
 for(ID in unique(GISBiochemDataHD1K$UniqueID)){
   print(ID)
@@ -197,5 +199,9 @@ for(ID in unique(GISBiochemDataHD1K$UniqueID)){
   tmp[order(tmp$FinalID),]
   tmp <- tmp[!duplicated(tmp),]
   print(length(tmp$FinalID))
+  names(tmp)[names(tmp)=="RAbund"]<-paste("RAbund",ID)
   HD1K <- join(HD1K,tmp,by="FinalID")
 }
+#Output dataframe for use in eLSA.
+names(HD1K)[names(HD1K)=="FinalID"]<-"#FinalID"
+write.table(HD1K,"HD1K.csv",quote=FALSE,sep=",",row.names = FALSE)
