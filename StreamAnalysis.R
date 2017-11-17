@@ -18,6 +18,8 @@ names(algaeDataSMC)[names(algaeDataSMC)=="Sample Station ID"]<-"SampleStationID"
 algaeDataSMC$RAbund <- with(algaeDataSMC,BAResult/ActualOrganismCount)
 #Add organism type for later use in merged data sets.
 algaeDataSMC$OrganismType <- with(algaeDataSMC,"algae")
+#Create unique ID combining the sample station ID and sampling date.
+algaeDataSMC$UniqueID <- with(algaeDataSMC,paste(algaeDataSMC$SampleStationID,algaeDataSMC$SampleDate))
 
 #Read in algae data from CEDEN sites.
 algaeDataCEDENRaw <- read.table("AlgaeTax_dnaSites_CEDEN.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
@@ -39,6 +41,8 @@ algaeDataCEDEN <- merge(algaeDataCEDEN,tmp,"SampleStationID")
 algaeDataCEDEN$RAbund <- with(algaeDataCEDEN,BAResult/ActualOrganismCount)
 #Add organism type for later use in merged data sets.
 algaeDataCEDEN$OrganismType <- with(algaeDataCEDEN,"algae")
+#Create unique ID combining the sample station ID and sampling date.
+algaeDataCEDEN$UniqueID <- with(algaeDataCEDEN,paste(algaeDataCEDEN$SampleStationID,algaeDataCEDEN$SampleDate))
 
 #The SWAMP data file is in a somewhat irregular format and this is accounted for
 #when being read in.
@@ -51,12 +55,15 @@ names(algaeDataSWAMP)[names(algaeDataSWAMP)=="StationCode"]<-"SampleStationID"
 algaeDataSWAMP$RAbund <- with(algaeDataSWAMP,BAResult/ActualOrganismCount)
 #Add organism type for later use in merged data sets.
 algaeDataSWAMP$OrganismType <- with(algaeDataSWAMP,"algae")
+#Create unique ID combining the sample station ID and sampling date.
+algaeDataSWAMP$UniqueID <- with(algaeDataSWAMP,paste(algaeDataSWAMP$SampleStationID,algaeDataSWAMP$SampleDate))
 
 #Create merged algae data set.
 algaeData <- do.call("rbind",list(algaeDataSMC,algaeDataSWAMP,algaeDataCEDEN))
 algaeData <- na.omit(algaeData)
 #Make the date format uniform
 algaeData$SampleDate <- sub("-","/",algaeData$SampleDate)
+algaeData$UniqueID <- sub("-","/",algaeData$UniqueID)
 
 #Read in insect data from SMC sites.
 insectDataSMCRAW <- read.table("BugTax_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
@@ -73,6 +80,8 @@ insectDataSMC <- merge(insectDataSMC,tmp,"SampleStationID")
 insectDataSMC$RAbund <- with(insectDataSMC,BAResult/ActualOrganismCount)
 #Add organism type for later use in merged data sets.
 insectDataSMC$OrganismType <- with(insectDataSMC,"invertebrate")
+#Create unique ID combining the sample station ID and sampling date.
+insectDataSMC$UniqueID <- with(insectDataSMC,paste(insectDataSMC$SampleStationID,insectDataSMC$SampleDate))
 
 #Read in insect data from CEDEN sites.
 insectDataCEDENRAW <- read.table("BugTax_dnaSites_CEDEN.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
@@ -89,6 +98,8 @@ insectDataCEDEN <- merge(insectDataCEDEN,tmp,"SampleStationID")
 insectDataCEDEN$RAbund <- with(insectDataCEDEN,BAResult/ActualOrganismCount)
 #Add organism type for later use in merged data sets.
 insectDataCEDEN$OrganismType <- with(insectDataCEDEN,"invertebrate")
+#Create unique ID combining the sample station ID and sampling date.
+insectDataCEDEN$UniqueID <- with(insectDataCEDEN,paste(insectDataCEDEN$SampleStationID,insectDataCEDEN$SampleDate))
 
 #Read in insect data from SWAMP sites.
 insectDataSWAMPRAW <- read.table("BugTaxonomy_dnaSamples_SWAMP.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
@@ -100,12 +111,15 @@ names(insectDataSWAMP)[names(insectDataSWAMP)=="Sample Station ID"]<-"SampleStat
 insectDataSWAMP$RAbund <- with(insectDataSWAMP,BAResult/ActualOrganismCount)
 #Add organism type for later use in merged data sets.
 insectDataSWAMP$OrganismType <- with(insectDataSWAMP,"invertebrate")
+#Create unique ID combining the sample station ID and sampling date.
+insectDataSWAMP$UniqueID <- with(insectDataSWAMP,paste(insectDataSWAMP$SampleStationID,insectDataSWAMP$SampleDate))
 
 #Create merged insect data set.
 insectData <- do.call("rbind",list(insectDataSMC,insectDataSWAMP,insectDataCEDEN))
 insectData <- na.omit(insectData)
 #Make the date format uniform
 insectData$SampleDate <- sub("-","/",insectData$SampleDate)
+insectData$UniqueID <- sub("-","/",insectData$UniqueID)
 
 #Merge insect and algae data.
 bioData <- do.call("rbind",list(insectData,algaeData))
@@ -115,10 +129,12 @@ chemDataRAW <- read.table("Chem_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T,
 #Subset columns.
 chemData <- chemDataRAW[,-c(2,4:12,14,16,18,21:27)]
 names(chemData)[names(chemData)=="Sample Station ID"]<-"SampleStationID"
+#Create unique ID combining the sample station ID and sampling date.
+chemData$UniqueID <- with(chemData,paste(chemData$SampleStationID,chemData$SampleDate))
 chemData <- na.omit(chemData)
 
 #Merge chemical and biological data.
-biochemData <- join(bioData,chemData,by="SampleStationID")
+biochemData <- join(bioData,chemData,by="UniqueID")
 
 #Read in geospatial data.
 GISDataRAW <- read.table("GIS_dnaSites.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
@@ -130,8 +146,10 @@ names(GISData)[names(GISData)=="New_Long"]<-"Longitude"
 GISData <- na.omit(GISData)
 #Merge geospatial data with biological observations.
 GISBiochemData <- join(biochemData,GISData,by="SampleStationID")
-GISBiochemData <- GISBiochemData[,-c(8:16,55:59,76:84,87:89,108)]
+#Create unique ID combining the sample station ID and sampling date.
+GISBiochemData$UniqueID <- with(GISBiochemData,paste(GISBiochemData$SampleStationID,GISBiochemData$SampleDate))
 GISBiochemData <- na.omit(GISBiochemData)
+GISBiochemData <- GISBiochemData[,-c(9:10,22:30,56:59,87:98,108)]
 
 #Calculate land usage index based on 1K, 5K, and catchment zone values.
 GISBiochemData$LU_2011_1K <- with(GISBiochemData,Ag_2011_1K+CODE_21_2011_1K+URBAN_2011_1K)
@@ -161,3 +179,23 @@ GISBiochemDataLDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 5),]
 GISBiochemDataMDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 15 & GISBiochemData$LU_2011_WS >= 5),]
 #HD = low disturbance.  Land usage index is greater than 15%.
 GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
+
+#Initialize a data frame where the rows are all of the unique taxa for a given
+#subset of the data.
+numrow = length(unique(GISBiochemDataHD1K$FinalID))
+numcol = length(unique(GISBiochemDataHD1K$UniqueID))
+HD1K <- as.data.frame(unique(GISBiochemDataHD1K$FinalID))
+names(HD1K)[names(HD1K)=="unique(GISBiochemDataHD1K$FinalID)"]<-"FinalID"
+HD1K[order(HD1K$FinalID),]
+
+i=1
+for(ID in unique(GISBiochemDataHD1K$UniqueID)){
+  print(ID)
+  i=i+1
+  print(i)
+  tmp <- GISBiochemDataHD1K[which(GISBiochemDataHD1K$UniqueID==ID),][,c(4,6)]
+  tmp[order(tmp$FinalID),]
+  tmp <- tmp[!duplicated(tmp),]
+  print(length(tmp$FinalID))
+  HD1K <- join(HD1K,tmp,by="FinalID")
+}
