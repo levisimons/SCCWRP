@@ -204,4 +204,4 @@ for(ID in unique(GISBiochemDataHD1K$UniqueID)){
 }
 #Output dataframe for use in eLSA.
 names(HD1K)[names(HD1K)=="FinalID"]<-"#FinalID"
-write.table(HD1K,"HD1K.csv",quote=FALSE,sep=",",row.names = FALSE)
+write.table(HD1K,"HD1K.tsv",quote=FALSE,sep="\t",row.names = FALSE)
