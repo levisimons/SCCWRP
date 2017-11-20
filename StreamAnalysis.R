@@ -203,5 +203,38 @@ for(ID in unique(GISBiochemDataHD1K$UniqueID)){
   HD1K <- join(HD1K,tmp,by="FinalID")
 }
 #Output dataframe for use in eLSA.
+#Note that the the data needs to have at least two location replicates per time point
+#and that the number of replicates per time point needs to be uniform.
+#This may involve subsampling data depending on the variation in the number of replicates per time point.
 names(HD1K)[names(HD1K)=="FinalID"]<-"#FinalID"
 write.table(HD1K,"HD1K.tsv",quote=FALSE,sep="\t",row.names = FALSE)
+
+#Read in eLSA output.
+#Compute network statistics of the likeliest association networks between taxa.
+library(igraph)
+library(network)
+networkdata <- read.table("HD1KNetwork.txt",header=TRUE, sep="\t",as.is=T)
+names(networkdata)[names(networkdata)=="PCC"]<-"weight"
+networkgraph=graph.data.frame(networkdata,directed=FALSE)
+plot(networkgraph,layout=layout.circle(networkgraph),edge.width=E(networkgraph)$weight*10,edge.color=ifelse(E(networkgraph)$weight > 0, "blue","red"))
+# Calculate the average network path length
+mean_distance(networkgraph)
+# Calculate the clustering coefficient
+transitivity(networkgraph)
+# Generate adjacency matrix of relative taxa abundance correlations
+adj= as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
+# Get the number of unique network edges
+0.5*network.edgecount(adj)
+# Get the network density.
+network.density(adj)
+
+library(vcd)
+library(MASS)
+# Get degree distribution of network.
+DDN <- degree(networkgraph)
+# Fit a poisson distribution to the link distribution of the network
+poissonFit <- fitdistr(DDN,"Poisson")
+# Get the value of lambda for the Poisson distribution
+coef(poissonFit)
+# Get the log-likelihood for this fit
+logLik(poissonFit)
