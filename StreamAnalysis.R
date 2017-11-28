@@ -6,20 +6,28 @@ library("ape")
 library("vegan")
 library("microbiome")
 library(data.table)
+library(tidyr)
 
 setwd("~/Desktop/SCCWRP")
 #Read in algae data from SMC sites.
 algaeDataSMCRaw <- read.table("AlgaeTax_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
 #Subset columns of interest for the SMC sites.
-algaeDataSMC <- algaeDataSMCRaw[,c(1,3,43,40,34)]
+algaeDataSMC <- algaeDataSMCRaw[,c(1,3,43,40)]
 #Change the header name for station ID.
 names(algaeDataSMC)[names(algaeDataSMC)=="Sample Station ID"]<-"SampleStationID"
+#Determine the algal totals count column and make it a temporary dataframe.
+tmp <- as.data.frame(xtabs(BAResult ~ SampleStationID,algaeDataSMC))
+colnames(tmp) <- c("SampleStationID","ActualOrganismCount")
+#Add algal totals count column to algae dataframe.
+algaeDataSMC <- merge(algaeDataSMC,tmp,"SampleStationID")
 #Calculate the relative abundance of algae data.
-algaeDataSMC$RAbund <- with(algaeDataSMC,BAResult/ActualOrganismCount)
+algaeDataSMC$Measurement <- with(algaeDataSMC,BAResult/ActualOrganismCount)
 #Add organism type for later use in merged data sets.
-algaeDataSMC$OrganismType <- with(algaeDataSMC,"algae")
+algaeDataSMC$MeasurementType <- with(algaeDataSMC,"Algal relative abundance")
 #Create unique ID combining the sample station ID and sampling date.
-algaeDataSMC$UniqueID <- with(algaeDataSMC,paste(algaeDataSMC$SampleStationID,algaeDataSMC$SampleDate))
+algaeDataSMC$UniqueID <- with(algaeDataSMC,paste(algaeDataSMC$SampleStationID,"SMC",algaeDataSMC$SampleDate))
+#Find sampling year.
+algaeDataSMC$Year <- with(algaeDataSMC,lapply(strsplit(algaeDataSMC$SampleDate,split="/"),"[",3))
 
 #Read in algae data from CEDEN sites.
 algaeDataCEDENRaw <- read.table("AlgaeTax_dnaSites_CEDEN.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
@@ -27,36 +35,42 @@ algaeDataCEDENRaw <- read.table("AlgaeTax_dnaSites_CEDEN.csv", header=TRUE, sep=
 algaeDataCEDEN <- algaeDataCEDENRaw[,c(6,11,36,32)]
 #Fix the date format.
 algaeDataCEDEN$SampleDate <- factor(gsub("-","/",algaeDataCEDEN$SampleDate))
-#Remove rows with blank data.
-algaeDataCEDEN <- na.omit(algaeDataCEDEN)
 #Change names to uniforma schema.
 names(algaeDataCEDEN)[names(algaeDataCEDEN)=="StationCode"]<-"SampleStationID"
 names(algaeDataCEDEN)[names(algaeDataCEDEN)=="Species"]<-"FinalID"
 #Determine the algal totals count column and make it a temporary dataframe.
-tmp <- ddply(algaeDataCEDEN,"SampleStationID",numcolwise(sum))[c(1,2)]
+tmp <- as.data.frame(xtabs(BAResult ~ SampleStationID,algaeDataCEDEN))
 colnames(tmp) <- c("SampleStationID","ActualOrganismCount")
-#Add algal totals count column to insect dataframe.
+#Add algal totals count column to algae dataframe.
 algaeDataCEDEN <- merge(algaeDataCEDEN,tmp,"SampleStationID")
 #Calculate the relative abundance of algae data.
-algaeDataCEDEN$RAbund <- with(algaeDataCEDEN,BAResult/ActualOrganismCount)
+algaeDataCEDEN$Measurement <- with(algaeDataCEDEN,BAResult/ActualOrganismCount)
 #Add organism type for later use in merged data sets.
-algaeDataCEDEN$OrganismType <- with(algaeDataCEDEN,"algae")
+algaeDataCEDEN$MeasurementType <- with(algaeDataCEDEN,"Algal relative abundance")
 #Create unique ID combining the sample station ID and sampling date.
-algaeDataCEDEN$UniqueID <- with(algaeDataCEDEN,paste(algaeDataCEDEN$SampleStationID,algaeDataCEDEN$SampleDate))
+algaeDataCEDEN$UniqueID <- with(algaeDataCEDEN,paste(algaeDataCEDEN$SampleStationID,"CEDEN",algaeDataCEDEN$SampleDate))
+#Find sampling year.
+algaeDataCEDEN$Year <- with(algaeDataCEDEN,lapply(strsplit(as.character(algaeDataCEDEN$SampleDate),split="/"),"[",1))
 
 #The SWAMP data file is in a somewhat irregular format and this is accounted for
 #when being read in.
 algaeDataSWAMPRaw <- read.table("AlgaeTaxonomy_dnaSamples_SWAMP.csv", fill=TRUE,header=TRUE, sep=",",as.is=T,check.names=FALSE)
-algaeDataSWAMP <- algaeDataSWAMPRaw[,c(6,8,97,90,73)]
-algaeDataSWAMP <- na.omit(algaeDataSWAMP)
+algaeDataSWAMP <- algaeDataSWAMPRaw[,c(6,8,97,90)]
 #Change names to uniforma schema.
 names(algaeDataSWAMP)[names(algaeDataSWAMP)=="StationCode"]<-"SampleStationID"
+#Determine the algal totals count column and make it a temporary dataframe.
+tmp <- as.data.frame(xtabs(BAResult ~ SampleStationID,algaeDataSWAMP))
+colnames(tmp) <- c("SampleStationID","ActualOrganismCount")
+#Add algal totals count column to algae dataframe.
+algaeDataSWAMP <- merge(algaeDataSWAMP,tmp,"SampleStationID")
 #Calculate the relative abundance of algae data.
-algaeDataSWAMP$RAbund <- with(algaeDataSWAMP,BAResult/ActualOrganismCount)
+algaeDataSWAMP$Measurement <- with(algaeDataSWAMP,BAResult/ActualOrganismCount)
 #Add organism type for later use in merged data sets.
-algaeDataSWAMP$OrganismType <- with(algaeDataSWAMP,"algae")
+algaeDataSWAMP$MeasurementType <- with(algaeDataSWAMP,"Algal relative abundance")
 #Create unique ID combining the sample station ID and sampling date.
-algaeDataSWAMP$UniqueID <- with(algaeDataSWAMP,paste(algaeDataSWAMP$SampleStationID,algaeDataSWAMP$SampleDate))
+algaeDataSWAMP$UniqueID <- with(algaeDataSWAMP,paste(algaeDataSWAMP$SampleStationID,"SWAMP",algaeDataSWAMP$SampleDate))
+#Find sampling year.
+algaeDataSWAMP$Year <- with(algaeDataSWAMP,lapply(strsplit(algaeDataSWAMP$SampleDate,split="/"),"[",3))
 
 #Create merged algae data set.
 algaeData <- do.call("rbind",list(algaeDataSMC,algaeDataSWAMP,algaeDataCEDEN))
@@ -72,16 +86,18 @@ insectDataSMC <- insectDataSMCRAW[,c(1,3,9,6)]
 #Change names to uniforma schema.
 names(insectDataSMC)[names(insectDataSMC)=="Sample Station ID"]<-"SampleStationID"
 #Determine the insect totals count column and make it a temporary dataframe.
-tmp <- ddply(insectDataSMC,"SampleStationID",numcolwise(sum))[c(1,2)]
+tmp <- as.data.frame(xtabs(BAResult ~ SampleStationID,insectDataSMC))
 colnames(tmp) <- c("SampleStationID","ActualOrganismCount")
 #Add insect totals count column to insect dataframe.
 insectDataSMC <- merge(insectDataSMC,tmp,"SampleStationID")
 #Calculate the relative abundance of insect data.
-insectDataSMC$RAbund <- with(insectDataSMC,BAResult/ActualOrganismCount)
+insectDataSMC$Measurement <- with(insectDataSMC,BAResult/ActualOrganismCount)
 #Add organism type for later use in merged data sets.
-insectDataSMC$OrganismType <- with(insectDataSMC,"invertebrate")
+insectDataSMC$MeasurementType <- with(insectDataSMC,"Invertebrate relative abundances")
 #Create unique ID combining the sample station ID and sampling date.
-insectDataSMC$UniqueID <- with(insectDataSMC,paste(insectDataSMC$SampleStationID,insectDataSMC$SampleDate))
+insectDataSMC$UniqueID <- with(insectDataSMC,paste(insectDataSMC$SampleStationID,"SMC",insectDataSMC$SampleDate))
+#Find sampling year.
+insectDataSMC$Year <- with(insectDataSMC,lapply(strsplit(insectDataSMC$SampleDate,split="/"),"[",3))
 
 #Read in insect data from CEDEN sites.
 insectDataCEDENRAW <- read.table("BugTax_dnaSites_CEDEN.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
@@ -90,29 +106,38 @@ insectDataCEDEN <- insectDataCEDENRAW[,c(6,11,36,26)]
 #Change names to uniforma schema.
 names(insectDataCEDEN)[names(insectDataCEDEN)=="StationCode"]<-"SampleStationID"
 #Determine the insect totals count column and make it a temporary dataframe.
-tmp <- ddply(insectDataCEDEN,"SampleStationID",numcolwise(sum))[c(1,2)]
+tmp <- as.data.frame(xtabs(BAResult ~ SampleStationID,insectDataCEDEN))
 colnames(tmp) <- c("SampleStationID","ActualOrganismCount")
 #Add insect totals count column to insect dataframe.
 insectDataCEDEN <- merge(insectDataCEDEN,tmp,"SampleStationID")
 #Calculate the relative abundance of insect data.
-insectDataCEDEN$RAbund <- with(insectDataCEDEN,BAResult/ActualOrganismCount)
+insectDataCEDEN$Measurement <- with(insectDataCEDEN,BAResult/ActualOrganismCount)
 #Add organism type for later use in merged data sets.
-insectDataCEDEN$OrganismType <- with(insectDataCEDEN,"invertebrate")
+insectDataCEDEN$MeasurementType <- with(insectDataCEDEN,"Invertebrate relative abundance")
 #Create unique ID combining the sample station ID and sampling date.
-insectDataCEDEN$UniqueID <- with(insectDataCEDEN,paste(insectDataCEDEN$SampleStationID,insectDataCEDEN$SampleDate))
+insectDataCEDEN$UniqueID <- with(insectDataCEDEN,paste(insectDataCEDEN$SampleStationID,"CEDEN",insectDataCEDEN$SampleDate))
+#Find sampling year.
+insectDataCEDEN$Year <- with(insectDataCEDEN,lapply(strsplit(as.character(insectDataCEDEN$SampleDate),split="-"),"[",1))
 
 #Read in insect data from SWAMP sites.
 insectDataSWAMPRAW <- read.table("BugTaxonomy_dnaSamples_SWAMP.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
 #Subset columns of interest.
-insectDataSWAMP <- insectDataSWAMPRAW[,c(1,8,97,90,73)]
+insectDataSWAMP <- insectDataSWAMPRAW[,c(1,8,97,90)]
 #Change names to uniforma schema.
 names(insectDataSWAMP)[names(insectDataSWAMP)=="Sample Station ID"]<-"SampleStationID"
+#Determine the insect totals count column and make it a temporary dataframe.
+tmp <- as.data.frame(xtabs(BAResult ~ SampleStationID,insectDataSWAMP))
+colnames(tmp) <- c("SampleStationID","ActualOrganismCount")
+#Add insect totals count column to insect dataframe.
+insectDataSWAMP <- merge(insectDataSWAMP,tmp,"SampleStationID")
 #Calculate the relative abundance of insect data.
-insectDataSWAMP$RAbund <- with(insectDataSWAMP,BAResult/ActualOrganismCount)
+insectDataSWAMP$Measurement <- with(insectDataSWAMP,BAResult/ActualOrganismCount)
 #Add organism type for later use in merged data sets.
-insectDataSWAMP$OrganismType <- with(insectDataSWAMP,"invertebrate")
+insectDataSWAMP$MeasurementType <- with(insectDataSWAMP,"Invertebrate relative abundance")
 #Create unique ID combining the sample station ID and sampling date.
-insectDataSWAMP$UniqueID <- with(insectDataSWAMP,paste(insectDataSWAMP$SampleStationID,insectDataSWAMP$SampleDate))
+insectDataSWAMP$UniqueID <- with(insectDataSWAMP,paste(insectDataSWAMP$SampleStationID,"SWAMP",insectDataSWAMP$SampleDate))
+#Find sampling year.
+insectDataSWAMP$Year <- with(insectDataSWAMP,lapply(strsplit(as.character(insectDataSWAMP$SampleDate),split="/"),"[",3))
 
 #Create merged insect data set.
 insectData <- do.call("rbind",list(insectDataSMC,insectDataSWAMP,insectDataCEDEN))
@@ -123,18 +148,62 @@ insectData$UniqueID <- sub("-","/",insectData$UniqueID)
 
 #Merge insect and algae data.
 bioData <- do.call("rbind",list(insectData,algaeData))
+bioData <- bioData[,-c(3,5)]
 
-#Read in chemical data for the test sites.
-chemDataRAW <- read.table("Chem_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Read in chemical data for the SMC test sites.
+chemDataSMCRAW <- read.table("Chem_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
 #Subset columns.
-chemData <- chemDataRAW[,-c(2,4:12,14,16,18,21:27)]
-names(chemData)[names(chemData)=="Sample Station ID"]<-"SampleStationID"
+chemDataSMC <- chemDataSMCRAW[,c(1,3,13,17,15)]
+#Introduce common naming schema.
+names(chemDataSMC)[names(chemDataSMC)=="Sample Station ID"]<-"SampleStationID"
+names(chemDataSMC)[names(chemDataSMC)=="AnalyteName"]<-"FinalID"
+names(chemDataSMC)[names(chemDataSMC)=="Result"]<-"Measurement"
+names(chemDataSMC)[names(chemDataSMC)=="Unit"]<-"MeasurementType"
 #Create unique ID combining the sample station ID and sampling date.
-chemData$UniqueID <- with(chemData,paste(chemData$SampleStationID,chemData$SampleDate))
+chemDataSMC$UniqueID <- with(chemDataSMC,paste(chemDataSMC$SampleStationID,"SMC",chemDataSMC$SampleDate))
+#Find sampling year.
+chemDataSMC$Year <- with(chemDataSMC,lapply(strsplit(chemDataSMC$SampleDate,split="/"),"[",3))
+
+#Read in chemical data for the CEDEN test sites.
+chemDataCEDENRAW <- read.table("Chem_dnaSites_CEDEN.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset the data.
+chemDataCEDEN <- chemDataCEDENRAW[,c(5,6,18,20,19)]
+#Introduce common naming schema.
+names(chemDataCEDEN)[names(chemDataCEDEN)=="StationCode"]<-"SampleStationID"
+names(chemDataCEDEN)[names(chemDataCEDEN)=="Analyte"]<-"FinalID"
+names(chemDataCEDEN)[names(chemDataCEDEN)=="Result"]<-"Measurement"
+names(chemDataCEDEN)[names(chemDataCEDEN)=="Unit"]<-"MeasurementType"
+#Create unique ID combining the sample station ID and sampling date.
+chemDataCEDEN$UniqueID <- with(chemDataCEDEN,paste(chemDataCEDEN$SampleStationID,"CEDEN",chemDataCEDEN$SampleDate))
+#Find sampling year.
+chemDataCEDEN$Year <- with(chemDataCEDEN,lapply(strsplit(chemDataCEDEN$SampleDate,split="-"),"[",1))
+
+#Read in chemical data for the SWAMP test sites.
+chemDataSWAMPRAW <- read.table("Chem_dnaSamples_SWAMP.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+#Subset the data.
+chemDataSWAMP <- chemDataSWAMPRAW[,c(1,8,70,89,74)]
+#Introduce common naming schema.
+names(chemDataSWAMP)[names(chemDataSWAMP)=="Sample Station ID"]<-"SampleStationID"
+names(chemDataSWAMP)[names(chemDataSWAMP)=="AnalyteName"]<-"FinalID"
+names(chemDataSWAMP)[names(chemDataSWAMP)=="Result"]<-"Measurement"
+names(chemDataSWAMP)[names(chemDataSWAMP)=="UnitName"]<-"MeasurementType"
+#Create unique ID combining the sample station ID and sampling date.
+chemDataSWAMP$UniqueID <- with(chemDataSWAMP,paste(chemDataSWAMP$SampleStationID,"SWAMP",chemDataSWAMP$SampleDate))
+#Find sampling year.
+chemDataSWAMP$Year <- with(chemDataSWAMP,lapply(strsplit(chemDataSWAMP$SampleDate,split="/"),"[",3))
+#Remove last erroneous row from data frame.
+chemDataSWAMP <- head(chemDataSWAMP,-1)
+#Create merged chemical data frame.
+chemData <- do.call("rbind",list(chemDataSMC,chemDataSWAMP,chemDataCEDEN))
 chemData <- na.omit(chemData)
+#Make the date format uniform
+chemData$SampleDate <- sub("-","/",chemData$SampleDate)
+chemData$UniqueID <- sub("-","/",chemData$UniqueID)
 
 #Merge chemical and biological data.
-biochemData <- join(bioData,chemData,by="UniqueID")
+biochemData <- do.call("rbind",list(bioData,chemData))
+#Sort bio-chem data by year.
+biochemData <- biochemData[order(as.numeric(biochemData$Year)),]
 
 #Read in geospatial data.
 GISDataRAW <- read.table("GIS_dnaSites.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
@@ -146,8 +215,9 @@ names(GISData)[names(GISData)=="New_Long"]<-"Longitude"
 GISData <- na.omit(GISData)
 #Merge geospatial data with biological observations.
 GISBiochemData <- join(biochemData,GISData,by="SampleStationID")
-#Create unique ID combining the sample station ID and sampling date.
-GISBiochemData$UniqueID <- with(GISBiochemData,paste(GISBiochemData$SampleStationID,GISBiochemData$SampleDate))
+#Create unique ID combining the sample station ID and sampling year.
+GISBiochemData$Year <- with(GISBiochemData,lapply(strsplit(GISBiochemData$SampleDate,split="/"),"[",3))
+GISBiochemData$UniqueID <- with(GISBiochemData,paste(GISBiochemData$SampleStationID,GISBiochemData$Year))
 GISBiochemData <- na.omit(GISBiochemData)
 GISBiochemData <- GISBiochemData[,-c(9:10,22:30,56:59,87:98,108)]
 
@@ -184,13 +254,14 @@ GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
 #subset of the data.
 numrow = length(unique(GISBiochemDataHD1K$FinalID))
 numcol = length(unique(GISBiochemDataHD1K$UniqueID))
-HD1K <- as.data.frame(unique(GISBiochemDataHD1K$FinalID))
-names(HD1K)[names(HD1K)=="unique(GISBiochemDataHD1K$FinalID)"]<-"FinalID"
-HD1K[order(HD1K$FinalID),]
+eLSAInput <- as.data.frame(unique(GISBiochemDataHD1K$FinalID))
+names(eLSAInput)[names(eLSAInput)=="unique(GISBiochemDataHD1K$FinalID)"]<-"FinalID"
+eLSAInput[order(eLSAInput$Year),]
 
 #Add the relative taxa abundances by column to a new dataframe.
 #The rows are the unique taxa in a given subset of data.
 i=1
+GISBiochemDataHD1K[order(GISBiochemDataHD1K$Year),]
 for(ID in unique(GISBiochemDataHD1K$UniqueID)){
   print(ID)
   i=i+1
@@ -200,14 +271,14 @@ for(ID in unique(GISBiochemDataHD1K$UniqueID)){
   tmp <- tmp[!duplicated(tmp),]
   print(length(tmp$FinalID))
   names(tmp)[names(tmp)=="RAbund"]<-paste("RAbund",ID)
-  HD1K <- join(HD1K,tmp,by="FinalID")
+  eLSAInput <- join(eLSAInput,tmp,by="FinalID")
 }
 #Output dataframe for use in eLSA.
 #Note that the the data needs to have at least two location replicates per time point
 #and that the number of replicates per time point needs to be uniform.
 #This may involve subsampling data depending on the variation in the number of replicates per time point.
-names(HD1K)[names(HD1K)=="FinalID"]<-"#FinalID"
-write.table(HD1K,"HD1K.tsv",quote=FALSE,sep="\t",row.names = FALSE)
+names(eLSAInput)[names(eLSAInput)=="FinalID"]<-"#FinalID"
+write.table(eLSAInput,"eLSAInput.txt",quote=FALSE,sep="\t",row.names = FALSE)
 
 #Read in eLSA output.
 #Compute network statistics of the likeliest association networks between taxa.
