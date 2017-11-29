@@ -11,6 +11,8 @@ library(tidyr)
 setwd("~/Desktop/SCCWRP")
 #Read in algae data from SMC sites.
 algaeDataSMCRaw <- read.table("AlgaeTax_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset only replicate 1
+algaeDataSMC <- filter(algaeDataSMCRaw, Replicate==1)
 #Subset columns of interest for the SMC sites.
 algaeDataSMC <- algaeDataSMCRaw[,c(1,3,43,40)]
 #Change the header name for station ID.
@@ -31,6 +33,8 @@ algaeDataSMC$Year <- with(algaeDataSMC,lapply(strsplit(algaeDataSMC$SampleDate,s
 
 #Read in algae data from CEDEN sites.
 algaeDataCEDENRaw <- read.table("AlgaeTax_dnaSites_CEDEN.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset only replicate 1
+algaeDataCEDEN <- filter(algaeDataCEDENRaw, CollectionReplicate==1)
 #Subset columns of interest for the CEDEN sites.
 algaeDataCEDEN <- algaeDataCEDENRaw[,c(6,11,36,32)]
 #Fix the date format.
@@ -55,6 +59,8 @@ algaeDataCEDEN$Year <- with(algaeDataCEDEN,lapply(strsplit(as.character(algaeDat
 #The SWAMP data file is in a somewhat irregular format and this is accounted for
 #when being read in.
 algaeDataSWAMPRaw <- read.table("AlgaeTaxonomy_dnaSamples_SWAMP.csv", fill=TRUE,header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset only replicate 1
+algaeDataSWAMP <- filter(algaeDataSWAMPRaw, Replicate==1)
 algaeDataSWAMP <- algaeDataSWAMPRaw[,c(6,8,97,90)]
 #Change names to uniforma schema.
 names(algaeDataSWAMP)[names(algaeDataSWAMP)=="StationCode"]<-"SampleStationID"
@@ -81,6 +87,8 @@ algaeData$UniqueID <- sub("-","/",algaeData$UniqueID)
 
 #Read in insect data from SMC sites.
 insectDataSMCRAW <- read.table("BugTax_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset only replicate 1
+insectDataSMC <- filter(insectDataSMCRAW, FieldReplicate==1)
 #Subset columns of interest.
 insectDataSMC <- insectDataSMCRAW[,c(1,3,9,6)]
 #Change names to uniforma schema.
@@ -101,6 +109,8 @@ insectDataSMC$Year <- with(insectDataSMC,lapply(strsplit(insectDataSMC$SampleDat
 
 #Read in insect data from CEDEN sites.
 insectDataCEDENRAW <- read.table("BugTax_dnaSites_CEDEN.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset only replicate 1
+insectDataCEDEN <- filter(insectDataCEDENRAW, CollectionReplicate==1)
 #Subset columns of interest.
 insectDataCEDEN <- insectDataCEDENRAW[,c(6,11,36,26)]
 #Change names to uniforma schema.
@@ -121,6 +131,8 @@ insectDataCEDEN$Year <- with(insectDataCEDEN,lapply(strsplit(as.character(insect
 
 #Read in insect data from SWAMP sites.
 insectDataSWAMPRAW <- read.table("BugTaxonomy_dnaSamples_SWAMP.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+#Subset only replicate 1
+insectDataSWAMP <- filter(insectDataSWAMPRAW, Replicate==1)
 #Subset columns of interest.
 insectDataSWAMP <- insectDataSWAMPRAW[,c(1,8,97,90)]
 #Change names to uniforma schema.
@@ -152,6 +164,8 @@ bioData <- bioData[,-c(3,5)]
 
 #Read in chemical data for the SMC test sites.
 chemDataSMCRAW <- read.table("Chem_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset only replicate 1
+chemDataSMC <- filter(chemDataSMCRAW, FieldReplicate==1)
 #Subset columns.
 chemDataSMC <- chemDataSMCRAW[,c(1,3,13,17,15)]
 #Introduce common naming schema.
@@ -166,6 +180,8 @@ chemDataSMC$Year <- with(chemDataSMC,lapply(strsplit(chemDataSMC$SampleDate,spli
 
 #Read in chemical data for the CEDEN test sites.
 chemDataCEDENRAW <- read.table("Chem_dnaSites_CEDEN.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset only replicate 1
+chemDataCEDEN <- filter(chemDataCEDENRAW, CollectionReplicate==1)
 #Subset the data.
 chemDataCEDEN <- chemDataCEDENRAW[,c(5,6,18,20,19)]
 #Introduce common naming schema.
@@ -180,6 +196,8 @@ chemDataCEDEN$Year <- with(chemDataCEDEN,lapply(strsplit(chemDataCEDEN$SampleDat
 
 #Read in chemical data for the SWAMP test sites.
 chemDataSWAMPRAW <- read.table("Chem_dnaSamples_SWAMP.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+#Subset only replicate 1
+chemDataSWAMP <- filter(chemDataSWAMPRAW, Replicate==1)
 #Subset the data.
 chemDataSWAMP <- chemDataSWAMPRAW[,c(1,8,70,89,74)]
 #Introduce common naming schema.
@@ -212,14 +230,10 @@ GISData <- GISDataRAW[,-c(2:5,8:10,15)]
 names(GISData)[names(GISData)=="Sample Station ID"]<-"SampleStationID"
 names(GISData)[names(GISData)=="New_Lat"]<-"Latitude"
 names(GISData)[names(GISData)=="New_Long"]<-"Longitude"
-GISData <- na.omit(GISData)
+
 #Merge geospatial data with biological observations.
 GISBiochemData <- join(biochemData,GISData,by="SampleStationID")
-#Create unique ID combining the sample station ID and sampling year.
-GISBiochemData$Year <- with(GISBiochemData,lapply(strsplit(GISBiochemData$SampleDate,split="/"),"[",3))
-GISBiochemData$UniqueID <- with(GISBiochemData,paste(GISBiochemData$SampleStationID,GISBiochemData$Year))
-GISBiochemData <- na.omit(GISBiochemData)
-GISBiochemData <- GISBiochemData[,-c(9:10,22:30,56:59,87:98,108)]
+GISBiochemData <- GISBiochemData[,-c(10:11,14:22,47:51,82:90,100)]
 
 #Calculate land usage index based on 1K, 5K, and catchment zone values.
 GISBiochemData$LU_2011_1K <- with(GISBiochemData,Ag_2011_1K+CODE_21_2011_1K+URBAN_2011_1K)
@@ -250,29 +264,38 @@ GISBiochemDataMDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 15 & GISB
 #HD = low disturbance.  Land usage index is greater than 15%.
 GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
 
-#Initialize a data frame where the rows are all of the unique taxa for a given
+#Initialize a data frame where the rows are all of the unique measurements for a given
 #subset of the data.
-numrow = length(unique(GISBiochemDataHD1K$FinalID))
-numcol = length(unique(GISBiochemDataHD1K$UniqueID))
+#Order the data frame by measurement name.
 eLSAInput <- as.data.frame(unique(GISBiochemDataHD1K$FinalID))
-names(eLSAInput)[names(eLSAInput)=="unique(GISBiochemDataHD1K$FinalID)"]<-"FinalID"
-eLSAInput[order(eLSAInput$Year),]
+colnames(eLSAInput)<-c("FinalID")
+eLSAInput <- as.data.frame(eLSAInput[order(eLSAInput$FinalID),])
+colnames(eLSAInput)<-c("FinalID")
+#eLSAInput <- eLSAInput %>% group_by(FinalID,UniqueID) %>% summarise_all((funs(mean)))
 
 #Add the relative taxa abundances by column to a new dataframe.
 #The rows are the unique taxa in a given subset of data.
-i=1
-GISBiochemDataHD1K[order(GISBiochemDataHD1K$Year),]
 for(ID in unique(GISBiochemDataHD1K$UniqueID)){
-  print(ID)
-  i=i+1
-  print(i)
-  tmp <- GISBiochemDataHD1K[which(GISBiochemDataHD1K$UniqueID==ID),][,c(4,6)]
-  tmp[order(tmp$FinalID),]
-  tmp <- tmp[!duplicated(tmp),]
-  print(length(tmp$FinalID))
-  names(tmp)[names(tmp)=="RAbund"]<-paste("RAbund",ID)
+  tmp <- filter(GISBiochemDataHD1K, UniqueID == ID)[,c(3,4,6)]
+  tmp <- as.data.frame(tmp[order(tmp$FinalID),])
+  tmp <- tmp[-c(3)]
+  colnames(tmp)<-c("FinalID",paste("Measurement",ID,sep=" "))
   eLSAInput <- join(eLSAInput,tmp,by="FinalID")
+  #eLSAInput <- join(eLSAInput,tmp,by="FinalID")
+  #for(ID in unique(tmp$UniqueID)){
+    #label=paste("Measurement",year,"Replicate",i,sep=" ")
+    #print(label)
+    #tmp = filter(tmp, UniqueID==ID)
+    #colnames(tmp)<-c("FinalID",label,"UniqueID")
+    #eLSAInput <- join(eLSAInput,tmp,by="FinalID")
+    #eLSAInput$UniqueID <- NULL
+  #}
 }
+eLSAInput$FinalID=as.character(eLSAInput$FinalID)
+eLSAInput <- eLSAInput %>% group_by(FinalID) %>% summarise_if(is.numeric,mean,na.rm=TRUE)
+
+eLSAInput[is.na(eLSAInput)] <- "NA"
+
 #Output dataframe for use in eLSA.
 #Note that the the data needs to have at least two location replicates per time point
 #and that the number of replicates per time point needs to be uniform.
