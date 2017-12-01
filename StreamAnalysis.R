@@ -38,10 +38,10 @@ algaeDataCEDENRaw <- read.table("AlgaeTax_dnaSites_CEDEN.csv", header=TRUE, sep=
 #Subset only replicate 1
 algaeDataCEDEN <- filter(algaeDataCEDENRaw, CollectionReplicate==1)
 #Subset columns of interest for the CEDEN sites.
-algaeDataCEDEN <- algaeDataCEDENRaw[,c(6,11,36,32)]
+algaeDataCEDEN <- algaeDataCEDENRaw[,c(6,11,36,26)]
 #Change names to uniforma schema.
 names(algaeDataCEDEN)[names(algaeDataCEDEN)=="StationCode"]<-"SampleStationID"
-names(algaeDataCEDEN)[names(algaeDataCEDEN)=="Species"]<-"FinalID"
+#names(algaeDataCEDEN)[names(algaeDataCEDEN)=="Species"]<-"FinalID"
 #Determine the algal totals count column and make it a temporary dataframe.
 tmp <- as.data.frame(xtabs(BAResult ~ SampleStationID,algaeDataCEDEN))
 colnames(tmp) <- c("SampleStationID","ActualOrganismCount")
@@ -240,6 +240,8 @@ names(GISData)[names(GISData)=="New_Long"]<-"Longitude"
 #Merge geospatial data with biological observations.
 GISBiochemData <- join(biochemData,GISData,by="SampleStationID")
 GISBiochemData <- GISBiochemData[,-c(10:11,14:22,47:51,82:90,100)]
+#Sort merged data set by year then measurement name.
+GISBiochemData <- as.data.frame(GISBiochemData[order(as.numeric(GISBiochemData$Year),as.character(GISBiochemData$FinalID)),])
 
 #Calculate land usage index based on 1K, 5K, and catchment zone values.
 GISBiochemData$LU_2011_1K <- with(GISBiochemData,Ag_2011_1K+CODE_21_2011_1K+URBAN_2011_1K)
@@ -270,18 +272,21 @@ GISBiochemDataMDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 15 & GISB
 #HD = low disturbance.  Land usage index is greater than 15%.
 GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
 
+#Select subset data frame from the total merged data set
+selected <- GISBiochemDataHD1K
+
 #Initialize a data frame where the rows are all of the unique measurements for a given
 #subset of the data.
 #Order the data frame by measurement name.
-eLSAInput <- as.data.frame(unique(GISBiochemDataHD1K$FinalID))
+eLSAInput <- as.data.frame(unique(selcted$FinalID))
 colnames(eLSAInput)<-c("FinalID")
-eLSAInput <- as.data.frame(eLSAInput[order(eLSAInput$FinalID),])
+eLSAInput <- as.data.frame(eLSAInput[order(as.character(eLSAInput$FinalID)),])
 colnames(eLSAInput)<-c("FinalID")
 
 #Add the relative taxa abundances by column to a new dataframe.
 #The rows are the unique taxa in a given subset of data.
-for(ID in unique(GISBiochemDataHD1K$UniqueID)){
-  tmp <- filter(GISBiochemDataHD1K, UniqueID == ID)[,c(3,4,6)]
+for(ID in unique(selected$UniqueID)){
+  tmp <- filter(selected, UniqueID == ID)[,c(3,4,6)]
   tmp <- as.data.frame(tmp[order(tmp$FinalID),])
   tmp <- tmp[-c(3)]
   colnames(tmp)<-c("FinalID",paste("Measurement",ID,sep=" "))
@@ -312,8 +317,11 @@ write.table(eLSAInput,"eLSAInput.txt",quote=FALSE,sep="\t",row.names = FALSE)
 #Compute network statistics of the likeliest association networks between taxa.
 library(igraph)
 library(network)
-networkdata <- read.table("HD1KNetwork.txt",header=TRUE, sep="\t",as.is=T)
+networkdata <- read.table("eLSAOutput2002t2015t2016.txt",header=TRUE, sep="\t",as.is=T)
+#Filter out association network data based on Q scores less than 0.05.
+networkdata <- filter(networkdata, Q <= 0.05)
 names(networkdata)[names(networkdata)=="PCC"]<-"weight"
+networkdata <- filter(networkdata, weight >= 0.5 )
 networkgraph=graph.data.frame(networkdata,directed=FALSE)
 plot(networkgraph,layout=layout.circle(networkgraph),edge.width=E(networkgraph)$weight*10,edge.color=ifelse(E(networkgraph)$weight > 0, "blue","red"))
 # Calculate the average network path length
