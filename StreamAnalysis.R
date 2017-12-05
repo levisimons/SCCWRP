@@ -273,8 +273,8 @@ GISBiochemDataMDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 15 & GISB
 GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
 
 #Select subset data frame from the total merged data set
-selected <- GISBiochemDataMDWS
-suffix <- "MDWS"
+selected <- GISBiochemDataLDWS
+suffix <- "LDWS"
 
 #Initialize a data frame where the rows are all of the unique measurements for a given
 #subset of the data.
@@ -362,7 +362,7 @@ write.table(eLSAInput,paste("eLSAInput",suffix,".txt",sep=""),quote=FALSE,sep="\
 #Compute network statistics of the likeliest association networks between taxa.
 library(igraph)
 library(network)
-networkdata <- read.table(paste("eLSAOutput",suffix,".txt",sep=""),header=TRUE, sep="\t",as.is=T)
+networkdata <- read.delim(paste("eLSAOutput",suffix,".txt",sep=""),header=TRUE, sep="\t",as.is=T,check.names=FALSE)
 #Filter out association network data based on P scores less than 0.05.
 networkdata <- filter(networkdata, P <= 0.05)
 names(networkdata)[names(networkdata)=="PCC"]<-"weight"
