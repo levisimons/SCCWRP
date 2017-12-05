@@ -273,12 +273,13 @@ GISBiochemDataMDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 15 & GISB
 GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
 
 #Select subset data frame from the total merged data set
-selected <- GISBiochemDataHD1K
+selected <- GISBiochemDataMDWS
+suffix <- "MDWS"
 
 #Initialize a data frame where the rows are all of the unique measurements for a given
 #subset of the data.
 #Order the data frame by measurement name.
-eLSAInput <- as.data.frame(unique(selcted$FinalID))
+eLSAInput <- as.data.frame(unique(selected$FinalID))
 colnames(eLSAInput)<-c("FinalID")
 eLSAInput <- as.data.frame(eLSAInput[order(as.character(eLSAInput$FinalID)),])
 colnames(eLSAInput)<-c("FinalID")
@@ -291,39 +292,82 @@ for(ID in unique(selected$UniqueID)){
   tmp <- tmp[-c(3)]
   colnames(tmp)<-c("FinalID",paste("Measurement",ID,sep=" "))
   eLSAInput <- join(eLSAInput,tmp,by="FinalID")
-  #eLSAInput <- join(eLSAInput,tmp,by="FinalID")
-  #for(ID in unique(tmp$UniqueID)){
-    #label=paste("Measurement",year,"Replicate",i,sep=" ")
-    #print(label)
-    #tmp = filter(tmp, UniqueID==ID)
-    #colnames(tmp)<-c("FinalID",label,"UniqueID")
-    #eLSAInput <- join(eLSAInput,tmp,by="FinalID")
-    #eLSAInput$UniqueID <- NULL
-  #}
+  eLSAInput$FinalID=as.character(eLSAInput$FinalID)
+  eLSAInput <- eLSAInput %>% group_by(FinalID) %>% summarise_if(is.numeric,mean,na.rm=TRUE)
+  print(ID)
 }
-eLSAInput$FinalID=as.character(eLSAInput$FinalID)
-eLSAInput <- eLSAInput %>% group_by(FinalID) %>% summarise_if(is.numeric,mean,na.rm=TRUE)
 
 eLSAInput[is.na(eLSAInput)] <- "NA"
+
+#Determine the number of time points in the eLSA input file.
+spotNum = length(unique(selected$Year))
+#Determine the number of replicates per time point in the eLSA input file.
+#In order to ensure a uniform number of replicates per year this needs to
+#be the maximum number of replicates for all of the years available.
+repMax = 0
+for(year in unique(selected$Year)){
+  tmp <- filter(selected, Year == year)[,c(6,7)]
+  repNum = length(unique(tmp$UniqueID))
+  if(repNum >= repMax){repMax = repNum}
+  print (paste(repMax,repNum,sep=" "))
+}
+repNum = repMax
+
+#Now insert the replicates with actual data in between the "NA" dummy columns
+#which ensure that the final eLSA input file has an even number of replicates
+#per year regardless of the variations in the actual number of sites (replicates)
+#sampled per year.
+eLSAtmp <- eLSAInput[,1]
+j=1
+k=1
+nulCol <- data.frame(matrix(ncol=repNum*spotNum,nrow=length(unique(selected$FinalID))))
+nulCol[,1] <- eLSAInput[,1]
+for(year in unique(selected$Year)){
+  tmp <- filter(selected, Year == year)
+  rep = length(unique(tmp$UniqueID))
+  for(i in 1:repNum){
+    if(i <= rep){
+      repLabel = paste(year,"DoneRep",i,sep="")
+      #print(repLabel)
+      j=j+1
+      k=k+1
+      eLSAtmp[,k] <- eLSAInput[,j]
+      #print(j)
+    }
+    else{
+      repLabel = as.character(paste(year,"Rep",i,sep=""))
+      #colnames(nulCol) <- c("#FinalID",repLabel)
+      #nulCol$repLabel <- "NA"
+      #eLSAtmp$repLabel <- merge(eLSAtmp,nulCol$repLabel,by="#FinalID")
+      k=k+1
+      #colnames(eLSAtmp[k]) <- repLabel
+      eLSAtmp[,k] <- "NA"
+      print(paste(k,repLabel,sep=" "))
+    }
+  }
+}
+
+eLSAInput <- eLSAtmp
 
 #Output dataframe for use in eLSA.
 #Note that the the data needs to have at least two location replicates per time point
 #and that the number of replicates per time point needs to be uniform.
 #This may involve subsampling data depending on the variation in the number of replicates per time point.
 names(eLSAInput)[names(eLSAInput)=="FinalID"]<-"#FinalID"
-write.table(eLSAInput,"eLSAInput.txt",quote=FALSE,sep="\t",row.names = FALSE)
+write.table(eLSAInput,paste("eLSAInput",suffix,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
+#At this point insert columns with all NA values for each year in order to even
+#out the number of replicates per year.
 
 #Read in eLSA output.
 #Compute network statistics of the likeliest association networks between taxa.
 library(igraph)
 library(network)
-networkdata <- read.table("eLSAOutput2002t2015t2016.txt",header=TRUE, sep="\t",as.is=T)
-#Filter out association network data based on Q scores less than 0.05.
-networkdata <- filter(networkdata, Q <= 0.05)
+networkdata <- read.table(paste("eLSAOutput",suffix,".txt",sep=""),header=TRUE, sep="\t",as.is=T)
+#Filter out association network data based on P scores less than 0.05.
+networkdata <- filter(networkdata, P <= 0.05)
 names(networkdata)[names(networkdata)=="PCC"]<-"weight"
-networkdata <- filter(networkdata, weight >= 0.5 )
 networkgraph=graph.data.frame(networkdata,directed=FALSE)
-plot(networkgraph,layout=layout.circle(networkgraph),edge.width=E(networkgraph)$weight*10,edge.color=ifelse(E(networkgraph)$weight > 0, "blue","red"))
+plot(networkgraph,layout=layout.random(networkgraph),edge.width=E(networkgraph)$weight*10,edge.color=ifelse(E(networkgraph)$weight > 0, "blue","red"))
 # Calculate the average network path length
 mean_distance(networkgraph)
 # Calculate the clustering coefficient
@@ -331,7 +375,9 @@ transitivity(networkgraph)
 # Generate adjacency matrix of relative taxa abundance correlations
 adj= as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
 # Get the number of unique network edges
-0.5*network.edgecount(adj)
+network.edgecount(adj)
+# Get the number of nodes
+network.size(adj)
 # Get the network density.
 network.density(adj)
 
