@@ -366,6 +366,15 @@ networkdata <- read.delim(paste("eLSAOutput",suffix,".txt",sep=""),header=TRUE, 
 #Filter out association network data based on P scores less than 0.05.
 networkdata <- filter(networkdata, P <= 0.05)
 names(networkdata)[names(networkdata)=="PCC"]<-"weight"
+algaeID <- unique(algaeData$FinalID)
+insectID <- unique(insectData$FinalID)
+chemID <- unique(chemData$FinalID)
+#Define a 'not in' function.
+'%!in%' <- function(x,y)!('%in%'(x,y))
+#Remove chemical factors as nodes from the network.
+networkdata <- subset(networkdata,networkdata$X %!in% chemID)
+networkdata <- subset(networkdata,networkdata$Y %!in% chemID)
+#Generate network graph and begin calculating network parameters.
 networkgraph=graph.data.frame(networkdata,directed=FALSE)
 plot(networkgraph,layout=layout.random(networkgraph),edge.width=E(networkgraph)$weight*10,edge.color=ifelse(E(networkgraph)$weight > 0, "blue","red"))
 # Calculate the average network path length
