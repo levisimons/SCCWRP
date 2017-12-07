@@ -239,7 +239,7 @@ names(GISData)[names(GISData)=="New_Long"]<-"Longitude"
 
 #Merge geospatial data with biological observations.
 GISBiochemData <- join(biochemData,GISData,by="SampleStationID")
-GISBiochemData <- GISBiochemData[,-c(10:11,14:22,47:51,82:90,100)]
+#GISBiochemData <- GISBiochemData[,-c(10:11,14:22,47:51,82:90,100)]
 #Sort merged data set by year then measurement name.
 GISBiochemData <- as.data.frame(GISBiochemData[order(as.numeric(GISBiochemData$Year),as.character(GISBiochemData$FinalID)),])
 
@@ -250,7 +250,7 @@ GISBiochemData <- as.data.frame(GISBiochemData[order(as.numeric(GISBiochemData$Y
 #The string format is Type_Year_Scale.
 #For example the land usage index label URBAN_2011_5K refers to land usage intensity from
 #urban land usage, in 2011, within 5km of the selection site.
-LandIndex = "URBAN_2000_1K"
+LandIndex = as.character("URBAN_2000_1K")
 
 #Enter the level of land usage to determine selection bounds on the LandIndex (Low, Middle, High).
 #Enter lower and upper bounds, LandLB and LandUB respectively, on land usage index.
@@ -271,8 +271,29 @@ if(LU == "High"){
   LandUB = 100
 }
 
+#Extract year when land usage data was collected.
+LandYear = as.numeric(sapply(strsplit(LandIndex,"_"),'[',2))
+
+#Use the land usage collection year to choose bounds on what years to subset
+#from the site data.
+if(LandYear == 2000){
+  LY = 1999
+  UY = 2005
+}
+if(LandYear == 2006){
+  LY = 2006
+  UY = 2010
+}
+if(LandYear == 2011){
+  LY = 2011
+  UY = 2017
+}
+
 #Select subset data frame from the total merged data set
-selected <- GISBiochemData[which(GISBiochemData$LandIndex >= LandLB & GISBiochemData$LandIndex < LandUB),]
+selected <- GISBiochemData[which(GISBiochemData[,LandIndex] >= LandLB & GISBiochemData[,LandIndex] < LandUB),]
+selected <- filter(selected, selected$Year >= LY & selected$Year <= UY)
+
+#Create suffix for file naming purposes.
 suffix <- paste(LandIndex,LU,sep="")
 
 #Initialize a data frame where the rows are all of the unique measurements for a given
@@ -327,19 +348,13 @@ for(year in unique(selected$Year)){
   for(i in 1:repNum){
     if(i <= rep){
       repLabel = paste(year,"DoneRep",i,sep="")
-      #print(repLabel)
       j=j+1
       k=k+1
       eLSAtmp[,k] <- eLSAInput[,j]
-      #print(j)
     }
     else{
       repLabel = as.character(paste(year,"Rep",i,sep=""))
-      #colnames(nulCol) <- c("#FinalID",repLabel)
-      #nulCol$repLabel <- "NA"
-      #eLSAtmp$repLabel <- merge(eLSAtmp,nulCol$repLabel,by="#FinalID")
       k=k+1
-      #colnames(eLSAtmp[k]) <- repLabel
       eLSAtmp[,k] <- "NA"
       print(paste(k,repLabel,sep=" "))
     }
