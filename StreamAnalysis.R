@@ -363,24 +363,28 @@ write.table(eLSAInput,paste("eLSAInput",suffix,".txt",sep=""),quote=FALSE,sep="\
 library(igraph)
 library(network)
 networkdata <- read.delim(paste("eLSAOutput",suffix,".txt",sep=""),header=TRUE, sep="\t",as.is=T,check.names=FALSE)
-#Filter out association network data based on P scores less than 0.05.
+#Filter out association network data based on P scores, for the local similarity
+#between two factors, with values less than 0.05.
 networkdata <- filter(networkdata, P <= 0.05)
-names(networkdata)[names(networkdata)=="PCC"]<-"weight"
+names(networkdata)[names(networkdata)=="LS"]<-"weight"
 algaeID <- unique(algaeData$FinalID)
 insectID <- unique(insectData$FinalID)
 chemID <- unique(chemData$FinalID)
 #Define a 'not in' function.
 '%!in%' <- function(x,y)!('%in%'(x,y))
-#Remove chemical factors as nodes from the network.
-networkdata <- subset(networkdata,networkdata$X %!in% chemID)
-networkdata <- subset(networkdata,networkdata$Y %!in% chemID)
+#Remove some subset of chemical and biological factors as nodes from the network.
+#networkdata <- subset(networkdata,networkdata$X %!in% chemID)
+#networkdata <- subset(networkdata,networkdata$X %!in% chemID)
+networkdata <- subset(networkdata,networkdata$X %in% insectID)
+networkdata <- subset(networkdata,networkdata$Y %in% insectID)
+
 #Generate network graph and begin calculating network parameters.
 networkgraph=graph.data.frame(networkdata,directed=FALSE)
 plot(networkgraph,layout=layout.random(networkgraph),edge.width=E(networkgraph)$weight*10,edge.color=ifelse(E(networkgraph)$weight > 0, "blue","red"))
 # Calculate the average network path length
 mean_distance(networkgraph)
 # Calculate the clustering coefficient
-transitivity(networkgraph)
+transitivity(networkgraph,type="globalundirected",isolate="zero")
 # Generate adjacency matrix of relative taxa abundance correlations
 adj= as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
 # Get the number of unique network edges
@@ -400,3 +404,4 @@ poissonFit <- fitdistr(DDN,"Poisson")
 coef(poissonFit)
 # Get the log-likelihood for this fit
 logLik(poissonFit)
+
