@@ -243,38 +243,37 @@ GISBiochemData <- GISBiochemData[,-c(10:11,14:22,47:51,82:90,100)]
 #Sort merged data set by year then measurement name.
 GISBiochemData <- as.data.frame(GISBiochemData[order(as.numeric(GISBiochemData$Year),as.character(GISBiochemData$FinalID)),])
 
-#Calculate land usage index based on 1K, 5K, and catchment zone values.
-GISBiochemData$LU_2011_1K <- with(GISBiochemData,Ag_2011_1K+CODE_21_2011_1K+URBAN_2011_1K)
-GISBiochemData$LU_2011_5K <- with(GISBiochemData,Ag_2011_5K+CODE_21_2011_5K+URBAN_2011_5K)
-GISBiochemData$LU_2011_WS <- with(GISBiochemData,Ag_2011_WS+CODE_21_2011_WS+URBAN_2011_WS)
+#Enter land usage index to select on.
+#Ag = agricultural.  URBAN = urban.
+#The years to choose are 2000, 2006, or 2011.
+#The selection scale is 1km, 5km, or the entire watershed around a site.
+#The string format is Type_Year_Scale.
+#For example the land usage index label URBAN_2011_5K refers to land usage intensity from
+#urban land usage, in 2011, within 5km of the selection site.
+LandIndex = "URBAN_2000_1K"
 
-#Subset site data based on land usage index within 1K catchment zones.
-#LD = low disturbance.  Land usage index is less than 5%.
-GISBiochemDataLD1K <- GISBiochemData[which(GISBiochemData$LU_2011_1K < 5),]
-#MD = low disturbance.  Land usage index is between 5% and 15%.
-GISBiochemDataMD1K <- GISBiochemData[which(GISBiochemData$LU_2011_1K < 15 & GISBiochemData$LU_2011_1K >= 5),]
-#HD = low disturbance.  Land usage index is greater than 15%.
-GISBiochemDataHD1K <- GISBiochemData[which(GISBiochemData$LU_2011_1K >= 15),]
-
-#Subset site data based on land usage index within 5K catchment zones.
-#LD = low disturbance.  Land usage index is less than 5%.
-GISBiochemDataLD5K <- GISBiochemData[which(GISBiochemData$LU_2011_5K < 5),]
-#MD = low disturbance.  Land usage index is between 5% and 15%.
-GISBiochemDataMD5K <- GISBiochemData[which(GISBiochemData$LU_2011_5K < 15 & GISBiochemData$LU_2011_5K >= 5),]
-#HD = low disturbance.  Land usage index is greater than 15%.
-GISBiochemDataHD5K <- GISBiochemData[which(GISBiochemData$LU_2011_5K >= 15),]
-
-#Subset site data based on land usage index within the full water drainage catchment zones.
-#LD = low disturbance.  Land usage index is less than 5%.
-GISBiochemDataLDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 5),]
-#MD = low disturbance.  Land usage index is between 5% and 15%.
-GISBiochemDataMDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 15 & GISBiochemData$LU_2011_WS >= 5),]
-#HD = low disturbance.  Land usage index is greater than 15%.
-GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
+#Enter the level of land usage to determine selection bounds on the LandIndex (Low, Middle, High).
+#Enter lower and upper bounds, LandLB and LandUB respectively, on land usage index.
+#Low is 0 <= LandIndex < 5
+#Middle is 5 <= LandIndex < 15
+#High is 15 <= LandIndex
+LU = "Low"
+if(LU == "Low"){
+  LandLB = 0
+  LandUB = 5
+}
+if(LU == "Middle"){
+  LandLB = 5
+  LandUB = 15
+}
+if(LU == "High"){
+  LandLB = 15
+  LandUB = 100
+}
 
 #Select subset data frame from the total merged data set
-selected <- GISBiochemDataLDWS
-suffix <- "LDWS"
+selected <- GISBiochemData[which(GISBiochemData$LandIndex >= LandLB & GISBiochemData$LandIndex < LandUB),]
+suffix <- paste(LandIndex,LU,sep="")
 
 #Initialize a data frame where the rows are all of the unique measurements for a given
 #subset of the data.
