@@ -225,9 +225,9 @@ chemData <- do.call("rbind",list(chemDataSMC,chemDataSWAMP,chemDataCEDEN))
 chemData <- na.omit(chemData)
 
 #Merge chemical and biological data.
-biochemData <- do.call("rbind",list(bioData,chemData))
+bioChemData <- do.call("rbind",list(bioData,chemData))
 #Sort bio-chem data by year.
-biochemData <- biochemData[order(as.numeric(biochemData$Year)),]
+bioChemData <- bioChemData[order(as.numeric(bioChemData$Year)),]
 
 #Read in geospatial data.
 GISDataRAW <- read.table("GIS_dnaSites.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
@@ -238,63 +238,43 @@ names(GISData)[names(GISData)=="New_Lat"]<-"Latitude"
 names(GISData)[names(GISData)=="New_Long"]<-"Longitude"
 
 #Merge geospatial data with biological observations.
-GISBiochemData <- join(biochemData,GISData,by="SampleStationID")
+GISBiochemData <- join(bioChemData,GISData,by="SampleStationID")
 #GISBiochemData <- GISBiochemData[,-c(10:11,14:22,47:51,82:90,100)]
 #Sort merged data set by year then measurement name.
 GISBiochemData <- as.data.frame(GISBiochemData[order(as.numeric(GISBiochemData$Year),as.character(GISBiochemData$FinalID)),])
 
-#Enter land usage index to select on.
-#Ag = agricultural.  URBAN = urban.
-#The years to choose are 2000, 2006, or 2011.
-#The selection scale is 1km (1K), 5km (5K), or the entire watershed (WS) around a site.
-#The string format is Type_Year_Scale.
-#For example the land usage index label URBAN_2011_5K refers to land usage intensity from
-#urban land usage, in 2011, within 5km of the selection site.
-LandIndex = as.character("URBAN_2011_1K")
+#Calculate land usage index based on 1K, 5K, and catchment zone values.
+GISBiochemData$LU_2011_1K <- with(GISBiochemData,Ag_2011_1K+CODE_21_2011_1K+URBAN_2011_1K)
+GISBiochemData$LU_2011_5K <- with(GISBiochemData,Ag_2011_5K+CODE_21_2011_5K+URBAN_2011_5K)
+GISBiochemData$LU_2011_WS <- with(GISBiochemData,Ag_2011_WS+CODE_21_2011_WS+URBAN_2011_WS)
 
-#Enter the level of land usage to determine selection bounds on the LandIndex (Low, Middle, High).
-#Enter lower and upper bounds, LandLB and LandUB respectively, on land usage index.
-#Low is 0 <= LandIndex < 5
-#Middle is 5 <= LandIndex < 15
-#High is 15 <= LandIndex
-LU = "High"
-if(LU == "Low"){
-  LandLB = 0
-  LandUB = 5
-}
-if(LU == "Middle"){
-  LandLB = 5
-  LandUB = 15
-}
-if(LU == "High"){
-  LandLB = 15
-  LandUB = 100
-}
+#Subset site data based on land usage index within 1K catchment zones.
+#LD = low disturbance.  Land usage index is less than 5%.
+GISBiochemDataLD1K <- GISBiochemData[which(GISBiochemData$LU_2011_1K < 5),]
+#MD = low disturbance.  Land usage index is between 5% and 15%.
+GISBiochemDataMD1K <- GISBiochemData[which(GISBiochemData$LU_2011_1K < 15 & GISBiochemData$LU_2011_1K >= 5),]
+#HD = low disturbance.  Land usage index is greater than 15%.
+GISBiochemDataHD1K <- GISBiochemData[which(GISBiochemData$LU_2011_1K >= 15),]
 
-#Extract year when land usage data was collected.
-LandYear = as.numeric(sapply(strsplit(LandIndex,"_"),'[',2))
+#Subset site data based on land usage index within 5K catchment zones.
+#LD = low disturbance.  Land usage index is less than 5%.
+GISBiochemDataLD5K <- GISBiochemData[which(GISBiochemData$LU_2011_5K < 5),]
+#MD = low disturbance.  Land usage index is between 5% and 15%.
+GISBiochemDataMD5K <- GISBiochemData[which(GISBiochemData$LU_2011_5K < 15 & GISBiochemData$LU_2011_5K >= 5),]
+#HD = low disturbance.  Land usage index is greater than 15%.
+GISBiochemDataHD5K <- GISBiochemData[which(GISBiochemData$LU_2011_5K >= 15),]
 
-#Use the land usage collection year to choose bounds on what years to subset
-#from the site data.
-if(LandYear == 2000){
-  LY = 1999
-  UY = 2005
-}
-if(LandYear == 2006){
-  LY = 2006
-  UY = 2010
-}
-if(LandYear == 2011){
-  LY = 2011
-  UY = 2017
-}
+#Subset site data based on land usage index within the full water drainage catchment zones.
+#LD = low disturbance.  Land usage index is less than 5%.
+GISBiochemDataLDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 5),]
+#MD = low disturbance.  Land usage index is between 5% and 15%.
+GISBiochemDataMDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 15 & GISBiochemData$LU_2011_WS >= 5),]
+#HD = low disturbance.  Land usage index is greater than 15%.
+GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
 
 #Select subset data frame from the total merged data set
-selected <- GISBiochemData[which(GISBiochemData[,LandIndex] >= LandLB & GISBiochemData[,LandIndex] < LandUB),]
-selected <- filter(selected, selected$Year >= LY & selected$Year <= UY)
-
-#Create suffix for file naming purposes.
-suffix <- paste(LandIndex,LU,sep="")
+selected <- GISBiochemDataHD1K
+suffix <- "HD1K"
 
 #Initialize a data frame where the rows are all of the unique measurements for a given
 #subset of the data.
@@ -364,11 +344,18 @@ for(year in unique(selected$Year)){
 eLSAInput <- eLSAtmp
 
 #Determine the average parameter values across the subsetted data set.
+library(matrixStats)
 eLSAAverage <- eLSAInput
 eLSAAverage <- as.data.frame(sapply(eLSAAverage,as.numeric))
 eLSAAverage$FinalID <- eLSAInput$FinalID
 eLSAAverage$mean <- rowMeans(eLSAAverage[,2:ncol(eLSAAverage)],na.rm=TRUE)
+eLSAAverage$median <- rowMedians(as.matrix(eLSAAverage[,2:ncol(eLSAAverage)]),na.rm=TRUE)
+eLSAAverage$STDEV <- rowSds(as.matrix(eLSAAverage[,2:ncol(eLSAAverage)]),na.rm=TRUE)
 
+#Output the parameter averages for a given geographic subset of data.
+chemID <- unique(chemData$FinalID)
+eLSAAverage <- subset(eLSAAverage,eLSAAverage$FinalID %in% chemID)[,c(-2:-(ncol(eLSAAverage)-3))]
+write.table(eLSAAverage,past("eLSAAverage",suffix,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
 
 #Output dataframe for use in eLSA.
 #Note that the the data needs to have at least two location replicates per time point
@@ -383,7 +370,6 @@ write.table(eLSAInput,paste("eLSAInput",suffix,".txt",sep=""),quote=FALSE,sep="\
 #Compute network statistics of the likeliest association networks between taxa.
 library(igraph)
 library(network)
-suffix = "MD5K"
 networkdata <- read.delim(paste("eLSAOutput",suffix,".txt",sep=""),header=TRUE, sep="\t",as.is=T,check.names=FALSE)
 #Filter out association network data based on P scores, for the local similarity
 #between two factors, with values less than 0.05.
