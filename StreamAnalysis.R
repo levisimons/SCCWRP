@@ -246,18 +246,18 @@ GISBiochemData <- as.data.frame(GISBiochemData[order(as.numeric(GISBiochemData$Y
 #Enter land usage index to select on.
 #Ag = agricultural.  URBAN = urban.
 #The years to choose are 2000, 2006, or 2011.
-#The selection scale is 1km, 5km, or the entire watershed around a site.
+#The selection scale is 1km (1K), 5km (5K), or the entire watershed (WS) around a site.
 #The string format is Type_Year_Scale.
 #For example the land usage index label URBAN_2011_5K refers to land usage intensity from
 #urban land usage, in 2011, within 5km of the selection site.
-LandIndex = as.character("URBAN_2000_1K")
+LandIndex = as.character("URBAN_2011_1K")
 
 #Enter the level of land usage to determine selection bounds on the LandIndex (Low, Middle, High).
 #Enter lower and upper bounds, LandLB and LandUB respectively, on land usage index.
 #Low is 0 <= LandIndex < 5
 #Middle is 5 <= LandIndex < 15
 #High is 15 <= LandIndex
-LU = "Low"
+LU = "High"
 if(LU == "Low"){
   LandLB = 0
   LandUB = 5
@@ -363,6 +363,13 @@ for(year in unique(selected$Year)){
 
 eLSAInput <- eLSAtmp
 
+#Determine the average parameter values across the subsetted data set.
+eLSAAverage <- eLSAInput
+eLSAAverage <- as.data.frame(sapply(eLSAAverage,as.numeric))
+eLSAAverage$FinalID <- eLSAInput$FinalID
+eLSAAverage$mean <- rowMeans(eLSAAverage[,2:ncol(eLSAAverage)],na.rm=TRUE)
+
+
 #Output dataframe for use in eLSA.
 #Note that the the data needs to have at least two location replicates per time point
 #and that the number of replicates per time point needs to be uniform.
@@ -376,31 +383,36 @@ write.table(eLSAInput,paste("eLSAInput",suffix,".txt",sep=""),quote=FALSE,sep="\
 #Compute network statistics of the likeliest association networks between taxa.
 library(igraph)
 library(network)
+suffix = "MD5K"
 networkdata <- read.delim(paste("eLSAOutput",suffix,".txt",sep=""),header=TRUE, sep="\t",as.is=T,check.names=FALSE)
 #Filter out association network data based on P scores, for the local similarity
 #between two factors, with values less than 0.05.
-networkdata <- filter(networkdata, P <= 0.05)
+networkdata <- filter(networkdata, P <= 0.01)
 names(networkdata)[names(networkdata)=="LS"]<-"weight"
+#Filter network data based on local similarity scores.
+#networkdata <- subset(networkdata,networkdata$weight>0)
 algaeID <- unique(algaeData$FinalID)
 insectID <- unique(insectData$FinalID)
 chemID <- unique(chemData$FinalID)
+
 #Define a 'not in' function.
 '%!in%' <- function(x,y)!('%in%'(x,y))
 #Remove some subset of chemical and biological factors as nodes from the network.
-#networkdata <- subset(networkdata,networkdata$X %!in% chemID)
-#networkdata <- subset(networkdata,networkdata$X %!in% chemID)
-networkdata <- subset(networkdata,networkdata$X %in% insectID)
-networkdata <- subset(networkdata,networkdata$Y %in% insectID)
+networkdata1 <- subset(networkdata,networkdata$X %!in% chemID & networkdata$Y %in% chemID)
+networkdata2 <- subset(networkdata,networkdata$Y %!in% chemID & networkdata$X %in% chemID)
+networkdata <- rbind(networkdata1,networkdata2)
+#networkdata <- subset(networkdata,networkdata$X %in% insectID)
+#networkdata <- subset(networkdata,networkdata$Y %in% insectID)
 
 #Generate network graph and begin calculating network parameters.
-networkgraph=graph.data.frame(networkdata,directed=FALSE)
-plot(networkgraph,layout=layout.random(networkgraph),edge.width=E(networkgraph)$weight*10,edge.color=ifelse(E(networkgraph)$weight > 0, "blue","red"))
+networkgraph=graph.data.frame(networkdata,directed=TRUE)
+plot(networkgraph,layout=layout.circle(networkgraph),vertex.size=5*degree(networkgraph),edge.width=abs(E(networkgraph)$weight*10),edge.color=ifelse(E(networkgraph)$weight > 0, "blue","red"))
 # Calculate the average network path length
-mean_distance(networkgraph)
+mean_distance(networkgraph,directed=FALSE)
 # Calculate the clustering coefficient
 transitivity(networkgraph,type="globalundirected",isolate="zero")
 # Generate adjacency matrix of relative taxa abundance correlations
-adj= as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
+adj= as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=TRUE,loops=FALSE,matrix.type="adjacency")
 # Get the number of unique network edges
 network.edgecount(adj)
 # Get the number of nodes
@@ -413,9 +425,15 @@ library(MASS)
 # Get degree distribution of network.
 DDN <- degree(networkgraph)
 # Fit a poisson distribution to the link distribution of the network
-poissonFit <- fitdistr(DDN,"Poisson")
-# Get the value of lambda for the Poisson distribution
-coef(poissonFit)
+curveFit <- fitdistr(DDN,"exponential")
+# Get the fit parameters for the distribution.
+# Scale-free networks are exponential and random networks are Poisson distributions.
+coef(curveFit)
 # Get the log-likelihood for this fit
-logLik(poissonFit)
-
+logLik(curveFit)
+# Histogram of node degree distribution.
+hist(degree(networkgraph, mode="all"), breaks=1:vcount(networkgraph)-1, main="Histogram of node degree")
+# Find the largest clique within the network.
+largest_cliques(as.undirected(networkgraph, mode= "collapse", edge.attr.comb=list(weight="sum", "ignore")))
+# List nodes by their number of links.
+degree(networkgraph)
