@@ -394,6 +394,10 @@ var$coord[,1:3]
 var_cor_func <- function(var.loadings, comp.sdev){
   var.loadings*comp.sdev
 }
+#Plot the contributions of each principal component to the overall
+#variation in the data set.
+fviz_screeplot(means.pca)
+
 # Variable correlation/coordinates
 loadings <- means.pca$rotation
 sdev <- means.pca$sdev
