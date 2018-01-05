@@ -243,7 +243,12 @@ GISBiochemData <- join(bioChemData,GISData,by="SampleStationID")
 #Sort merged data set by year then measurement name.
 GISBiochemData <- as.data.frame(GISBiochemData[order(as.numeric(GISBiochemData$Year),as.character(GISBiochemData$FinalID)),])
 
+#Filter out erroneous negative values for physical parameter data.
+chemID <- unique(chemData$FinalID)
+GISBiochemData <- filter(GISBiochemData,Measurement>=0)
+
 #Calculate land usage index based on 1K, 5K, and catchment zone values.
+#Use land usage data from 2011.
 GISBiochemData$LU_2011_1K <- with(GISBiochemData,Ag_2011_1K+CODE_21_2011_1K+URBAN_2011_1K)
 GISBiochemData$LU_2011_5K <- with(GISBiochemData,Ag_2011_5K+CODE_21_2011_5K+URBAN_2011_5K)
 GISBiochemData$LU_2011_WS <- with(GISBiochemData,Ag_2011_WS+CODE_21_2011_WS+URBAN_2011_WS)
@@ -272,9 +277,9 @@ GISBiochemDataMDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 15 & GISB
 #HD = low disturbance.  Land usage index is greater than 15%.
 GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
 
-#Select subset data frame from the total merged data set
-selected <- GISBiochemDataHD1K
-suffix <- "HD1K"
+#Select a geographic subset data frame from the total merged data set.
+selected <- GISBiochemDataLDWS
+suffix <- "LDWS"
 
 #Initialize a data frame where the rows are all of the unique measurements for a given
 #subset of the data.
@@ -355,7 +360,56 @@ eLSAAverage$STDEV <- rowSds(as.matrix(eLSAAverage[,2:ncol(eLSAAverage)]),na.rm=T
 #Output the parameter averages for a given geographic subset of data.
 chemID <- unique(chemData$FinalID)
 eLSAAverage <- subset(eLSAAverage,eLSAAverage$FinalID %in% chemID)[,c(-2:-(ncol(eLSAAverage)-3))]
-write.table(eLSAAverage,past("eLSAAverage",suffix,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
+colnames(eLSAAverage) <- c("FinalID",paste("mean",suffix),"median","STDEV")
+write.table(eLSAAverage,paste("eLSAAverage",suffix,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
+
+#Aggreate all of the mean physical parameter averages into a single data frame
+#for analysis.  Make sure you've already generated these subsetted files first.
+suffixList = c("HD1K","MD1K","LD1K","HD5K","MD5K","LD5K","HDWS","MDWS","LDWS")
+means <- data.frame(chemID)
+colnames(means) <- c("FinalID")
+for(suffix in suffixList){
+  print(paste("eLSAAverage",suffix,".txt",sep=""))
+  parameter <- read.delim(paste("eLSAAverage",suffix,".txt",sep=""),header=TRUE, sep="\t",as.is=T,check.names=FALSE)
+  print(parameter[,-c(3:4)])
+  parameter <- data.frame(parameter[,-c(3:4)])
+  means <- join(means,parameter,by="FinalID")
+}
+means <- t(means)
+colnames(means) <- means[1,]
+means <- means[-1,]
+means <- as.data.frame(means)
+
+#Scale your average physical parameter dataframe to perform PCA.
+library("factoextra")
+means <- data.frame(sapply(means, function(x) as.numeric(as.character(x))))
+log.means <- log(means)
+row.names(log.means) <- suffixList
+log.means[is.na(log.means)] <- 0
+log.means <- log.means[,which(apply(log.means,2,var)!=0)]
+means.pca <- prcomp(log.means,center=TRUE,scale.=TRUE)
+var <- get_pca_var(means.pca)
+var$coord[,1:3]
+# Correlation between variables and principal components
+var_cor_func <- function(var.loadings, comp.sdev){
+  var.loadings*comp.sdev
+}
+# Variable correlation/coordinates
+loadings <- means.pca$rotation
+sdev <- means.pca$sdev
+
+# Determine which physical variables drive most of the variation
+# in the principal components of the system.
+var.coord <- var.cor <- t(apply(loadings, 1, var_cor_func, sdev))
+var.coord[, 1:3]
+var.cos2 <- var.coord^2
+var.cos2[,1:3]
+comp.cos2 <- apply(var.cos2, 2, sum)
+contrib <- function(var.cos2, comp.cos2){var.cos2*100/comp.cos2}
+var.contrib <- t(apply(var.cos2,1, contrib, comp.cos2))
+head(var.contrib[,1:3])
+fviz_cos2(means.pca, choice = "var", axes = 1,top=20)
+
 
 #Output dataframe for use in eLSA.
 #Note that the the data needs to have at least two location replicates per time point
