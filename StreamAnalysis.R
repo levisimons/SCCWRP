@@ -247,6 +247,9 @@ GISBiochemData <- as.data.frame(GISBiochemData[order(as.numeric(GISBiochemData$Y
 chemID <- unique(chemData$FinalID)
 GISBiochemData <- filter(GISBiochemData,Measurement>=0)
 
+#Filter out duplicate rows.
+GISBiochemData <- GISBiochemData[!duplicated(GISBiochemData),]
+
 #Calculate land usage index based on 1K, 5K, and catchment zone values.
 #Use land usage data from 2011.
 GISBiochemData$LU_2011_1K <- with(GISBiochemData,Ag_2011_1K+CODE_21_2011_1K+URBAN_2011_1K)
@@ -277,9 +280,75 @@ GISBiochemDataMDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 15 & GISB
 #HD = low disturbance.  Land usage index is greater than 15%.
 GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
 
+#Find the average value of the parameters most strongly correlated to the top
+#two principal components which describe variations in chemical parameter space
+#given changes in land usage intensity.  These averages will be used to split
+#the site data according to sites above or below the average parameter values.
+#parameter1 = strongly correlated parameter to principal component 1.
+#parameter2 = strongly correlated parameter to principal component 2.
+i=0
+parameter1 <- data.frame()
+parameter2 <- data.frame()
+parameter1Name <- "OrthoPhosphate as P"
+parameter2Name <- "Silica as SiO2"
+for(site in unique(GISBiochemData$UniqueID)){
+  GISBiochemDataSite <- GISBiochemData[GISBiochemData$UniqueID == site,]
+  if(parameter1Name %in% GISBiochemDataSite$FinalID & parameter2Name %in% GISBiochemDataSite$FinalID){
+    i=i+1
+    tmp1 <- GISBiochemDataSite[which(GISBiochemDataSite$FinalID==parameter1Name),]
+    parameter1 <- rbind(parameter1,tmp1$Measurement[1])
+    tmp2 <- GISBiochemDataSite[which(GISBiochemDataSite$FinalID==parameter2Name),]
+    parameter2 <- rbind(parameter2,tmp2$Measurement[1])
+    print(paste(tmp1))
+  }
+}
+
+parameter1Ave <- colMeans(as.data.frame(rowMeans(parameter1,na.rm=TRUE)),na.rm=TRUE)
+parameter2Ave <- colMeans(as.data.frame(rowMeans(parameter2,na.rm=TRUE)),na.rm=TRUE)
+print(paste("There are",i,"rows where both parameters are measured.",sep=" "))
+print(paste("Average value",parameter1Name,":",parameter1Ave,sep=" "))
+print(paste("Average value",parameter2Name,":",parameter2Ave,sep=" "))
+
+#Split site data based on the average value of the two parameters.
+#Given the most significant chemical factors related to changes in land usage
+#subset site data based on those values.
+#H1 = high parameter 1 concentration.  L1 = low parameter 1 concentration.
+#H2 = high parameter 2 concentration.  L2 = low parameter 2 concentration.
+GISBiochemDataH1H2 <- data.frame()
+GISBiochemDataH1L2 <- data.frame()
+GISBiochemDataL1H2 <- data.frame()
+GISBiochemDataL1L2 <- data.frame()
+for(site in unique(GISBiochemData$UniqueID)){
+  GISBiochemDataSite <- GISBiochemData[GISBiochemData$UniqueID == site,]
+  if(parameter1Name %in% GISBiochemDataSite$FinalID & parameter2Name %in% GISBiochemDataSite$FinalID){
+    tmp1 <- GISBiochemDataSite[which(GISBiochemDataSite$FinalID==parameter1Name),]
+    tmp2 <- GISBiochemDataSite[which(GISBiochemDataSite$FinalID==parameter2Name),]
+    if(tmp1$Measurement[1]>parameter1Ave){
+      if(tmp2$Measurement[1]>parameter2Ave){
+        print(paste("H1H2: ",site,parameter1Name,tmp1$Measurement[1],parameter2Name,tmp2$Measurement[1]))
+        GISBiochemDataH1H2 <- rbind(GISBiochemDataH1H2,GISBiochemDataSite)
+      }
+      if(tmp2$Measurement[1]<parameter2Ave){
+        print(paste("H1L2: ",site,parameter1Name,tmp1$Measurement[1],parameter2Name,tmp2$Measurement[1]))
+        GISBiochemDataH1L2 <- rbind(GISBiochemDataH1L2,GISBiochemDataSite)
+      }
+    }
+    if(tmp1$Measurement[1]<parameter1Ave){
+      if(tmp2$Measurement[1]>parameter2Ave){
+        print(paste("L1H2: ",site,parameter1Name,tmp1$Measurement[1],parameter2Name,tmp2$Measurement[1]))
+        GISBiochemDataL1H2 <- rbind(GISBiochemDataL1H2,GISBiochemDataSite)
+      }
+      if(tmp2$Measurement[1]<parameter2Ave){
+        print(paste("L1L2: ",site,parameter1Name,tmp1$Measurement[1],parameter2Name,tmp2$Measurement[1]))
+        GISBiochemDataL1L2 <- rbind(GISBiochemDataL1L2,GISBiochemDataSite)
+      }
+    }
+  }
+}
+
 #Select a geographic subset data frame from the total merged data set.
-selected <- GISBiochemDataLDWS
-suffix <- "LDWS"
+selected <- GISBiochemDataL1L2
+suffix <- "L1L2"
 
 #Initialize a data frame where the rows are all of the unique measurements for a given
 #subset of the data.
@@ -348,7 +417,7 @@ for(year in unique(selected$Year)){
 
 eLSAInput <- eLSAtmp
 
-#Determine the average parameter values across the subsetted data set.
+#If you want to determine the average parameter values across the subsetted data set.
 library(matrixStats)
 eLSAAverage <- eLSAInput
 eLSAAverage <- as.data.frame(sapply(eLSAAverage,as.numeric))
@@ -357,7 +426,7 @@ eLSAAverage$mean <- rowMeans(eLSAAverage[,2:ncol(eLSAAverage)],na.rm=TRUE)
 eLSAAverage$median <- rowMedians(as.matrix(eLSAAverage[,2:ncol(eLSAAverage)]),na.rm=TRUE)
 eLSAAverage$STDEV <- rowSds(as.matrix(eLSAAverage[,2:ncol(eLSAAverage)]),na.rm=TRUE)
 
-#Output the parameter averages for a given geographic subset of data.
+#If you want to output the parameter averages for a given geographic subset of data.
 chemID <- unique(chemData$FinalID)
 eLSAAverage <- subset(eLSAAverage,eLSAAverage$FinalID %in% chemID)[,c(-2:-(ncol(eLSAAverage)-3))]
 colnames(eLSAAverage) <- c("FinalID",paste("mean",suffix),"median","STDEV")
@@ -411,14 +480,15 @@ var.cos2[,1:3]
 comp.cos2 <- apply(var.cos2, 2, sum)
 contrib <- function(var.cos2, comp.cos2){var.cos2*100/comp.cos2}
 var.contrib <- t(apply(var.cos2,1, contrib, comp.cos2))
-head(var.contrib[,1:3])
-fviz_cos2(means.pca, choice = "var", axes = 1,top=20)
+(var.contrib[,1:2])
+fviz_cos2(means.pca, choice = "var", axes = 1,top=90)
 
 
 #Output dataframe for use in eLSA.
 #Note that the the data needs to have at least two location replicates per time point
 #and that the number of replicates per time point needs to be uniform.
 #This may involve subsampling data depending on the variation in the number of replicates per time point.
+#The first character in an eLSA formatted file needs to be #.
 names(eLSAInput)[names(eLSAInput)=="FinalID"]<-"#FinalID"
 write.table(eLSAInput,paste("eLSAInput",suffix,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
 #At this point insert columns with all NA values for each year in order to even
