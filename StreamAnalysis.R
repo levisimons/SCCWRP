@@ -289,8 +289,8 @@ GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
 i=0
 parameter1 <- data.frame()
 parameter2 <- data.frame()
-parameter1Name <- "OrthoPhosphate as P"
-parameter2Name <- "Silica as SiO2"
+parameter1Name <- "Chloride"
+parameter2Name <- "Nitrite as N"
 for(site in unique(GISBiochemData$UniqueID)){
   GISBiochemDataSite <- GISBiochemData[GISBiochemData$UniqueID == site,]
   if(parameter1Name %in% GISBiochemDataSite$FinalID & parameter2Name %in% GISBiochemDataSite$FinalID){
@@ -347,8 +347,8 @@ for(site in unique(GISBiochemData$UniqueID)){
 }
 
 #Select a geographic subset data frame from the total merged data set.
-selected <- GISBiochemDataL1L2
-suffix <- "L1L2"
+selected <- GISBiochemDataH1H2
+suffix <- "H1H2"
 
 #Initialize a data frame where the rows are all of the unique measurements for a given
 #subset of the data.
