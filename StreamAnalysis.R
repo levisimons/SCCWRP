@@ -289,8 +289,8 @@ GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
 i=0
 parameter1 <- data.frame()
 parameter2 <- data.frame()
-parameter1Name <- "Chloride"
-parameter2Name <- "Nitrite as N"
+parameter1Name <- "OrthoPhosphate as P"
+parameter2Name <- "Alkalinity as CaCO3"
 for(site in unique(GISBiochemData$UniqueID)){
   GISBiochemDataSite <- GISBiochemData[GISBiochemData$UniqueID == site,]
   if(parameter1Name %in% GISBiochemDataSite$FinalID & parameter2Name %in% GISBiochemDataSite$FinalID){
@@ -480,9 +480,12 @@ var.cos2[,1:3]
 comp.cos2 <- apply(var.cos2, 2, sum)
 contrib <- function(var.cos2, comp.cos2){var.cos2*100/comp.cos2}
 var.contrib <- t(apply(var.cos2,1, contrib, comp.cos2))
-(var.contrib[,1:2])
-fviz_cos2(means.pca, choice = "var", axes = 1,top=90)
-
+head(var.contrib[,1:2])
+#Plot the chemical parameters most strongly correlated to a designated
+#individual or set of principal components.  Store the correlations in a dataframe.
+fviz_cos2(means.pca, choice = "var", axes = 1:2,sort.val="des")
+cos2Plot <- fviz_cos2(means.pca, choice = "var", axes = 1:2,sort.val="des",top=100)
+cos2Values <- cos2Plot$data
 
 #Output dataframe for use in eLSA.
 #Note that the the data needs to have at least two location replicates per time point
@@ -501,7 +504,7 @@ library(network)
 networkdata <- read.delim(paste("eLSAOutput",suffix,".txt",sep=""),header=TRUE, sep="\t",as.is=T,check.names=FALSE)
 #Filter out association network data based on P scores, for the local similarity
 #between two factors, with values less than 0.05.
-networkdata <- filter(networkdata, P <= 0.01)
+networkdata <- filter(networkdata, P <= 0.05)
 names(networkdata)[names(networkdata)=="LS"]<-"weight"
 #Filter network data based on local similarity scores.
 #networkdata <- subset(networkdata,networkdata$weight>0)
