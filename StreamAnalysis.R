@@ -284,71 +284,49 @@ GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
 #two principal components which describe variations in chemical parameter space
 #given changes in land usage intensity.  These averages will be used to split
 #the site data according to sites above or below the average parameter values.
-#parameter1 = strongly correlated parameter to principal component 1.
-#parameter2 = strongly correlated parameter to principal component 2.
+#parameter1 = strongly correlated parameter to axis composed of
+#principal components 1 and 2.
 i=0
 parameter1 <- data.frame()
-parameter2 <- data.frame()
-parameter1Name <- "OrthoPhosphate as P"
-parameter2Name <- "Alkalinity as CaCO3"
+parameter1Name <- "Hardness as CaCO3"
 for(site in unique(GISBiochemData$UniqueID)){
   GISBiochemDataSite <- GISBiochemData[GISBiochemData$UniqueID == site,]
-  if(parameter1Name %in% GISBiochemDataSite$FinalID & parameter2Name %in% GISBiochemDataSite$FinalID){
+  if(parameter1Name %in% GISBiochemDataSite$FinalID){
     i=i+1
     tmp1 <- GISBiochemDataSite[which(GISBiochemDataSite$FinalID==parameter1Name),]
     parameter1 <- rbind(parameter1,tmp1$Measurement[1])
-    tmp2 <- GISBiochemDataSite[which(GISBiochemDataSite$FinalID==parameter2Name),]
-    parameter2 <- rbind(parameter2,tmp2$Measurement[1])
     print(paste(tmp1))
   }
 }
 
 parameter1Ave <- colMeans(as.data.frame(rowMeans(parameter1,na.rm=TRUE)),na.rm=TRUE)
-parameter2Ave <- colMeans(as.data.frame(rowMeans(parameter2,na.rm=TRUE)),na.rm=TRUE)
-print(paste("There are",i,"rows where both parameters are measured.",sep=" "))
+print(paste("There are",i,"rows where this parameter is measured.",sep=" "))
 print(paste("Average value",parameter1Name,":",parameter1Ave,sep=" "))
-print(paste("Average value",parameter2Name,":",parameter2Ave,sep=" "))
 
 #Split site data based on the average value of the two parameters.
 #Given the most significant chemical factors related to changes in land usage
 #subset site data based on those values.
 #H1 = high parameter 1 concentration.  L1 = low parameter 1 concentration.
-#H2 = high parameter 2 concentration.  L2 = low parameter 2 concentration.
-GISBiochemDataH1H2 <- data.frame()
-GISBiochemDataH1L2 <- data.frame()
-GISBiochemDataL1H2 <- data.frame()
-GISBiochemDataL1L2 <- data.frame()
+GISBiochemDataH1 <- data.frame()
+GISBiochemDataL1 <- data.frame()
 for(site in unique(GISBiochemData$UniqueID)){
   GISBiochemDataSite <- GISBiochemData[GISBiochemData$UniqueID == site,]
-  if(parameter1Name %in% GISBiochemDataSite$FinalID & parameter2Name %in% GISBiochemDataSite$FinalID){
+  if(parameter1Name %in% GISBiochemDataSite$FinalID){
     tmp1 <- GISBiochemDataSite[which(GISBiochemDataSite$FinalID==parameter1Name),]
-    tmp2 <- GISBiochemDataSite[which(GISBiochemDataSite$FinalID==parameter2Name),]
     if(tmp1$Measurement[1]>parameter1Ave){
-      if(tmp2$Measurement[1]>parameter2Ave){
-        print(paste("H1H2: ",site,parameter1Name,tmp1$Measurement[1],parameter2Name,tmp2$Measurement[1]))
-        GISBiochemDataH1H2 <- rbind(GISBiochemDataH1H2,GISBiochemDataSite)
+      print(paste("H1: ",site,parameter1Name,tmp1$Measurement[1]))
+      GISBiochemDataH1 <- rbind(GISBiochemDataH1,GISBiochemDataSite)
       }
-      if(tmp2$Measurement[1]<parameter2Ave){
-        print(paste("H1L2: ",site,parameter1Name,tmp1$Measurement[1],parameter2Name,tmp2$Measurement[1]))
-        GISBiochemDataH1L2 <- rbind(GISBiochemDataH1L2,GISBiochemDataSite)
-      }
-    }
     if(tmp1$Measurement[1]<parameter1Ave){
-      if(tmp2$Measurement[1]>parameter2Ave){
-        print(paste("L1H2: ",site,parameter1Name,tmp1$Measurement[1],parameter2Name,tmp2$Measurement[1]))
-        GISBiochemDataL1H2 <- rbind(GISBiochemDataL1H2,GISBiochemDataSite)
-      }
-      if(tmp2$Measurement[1]<parameter2Ave){
-        print(paste("L1L2: ",site,parameter1Name,tmp1$Measurement[1],parameter2Name,tmp2$Measurement[1]))
-        GISBiochemDataL1L2 <- rbind(GISBiochemDataL1L2,GISBiochemDataSite)
+      print(paste("L1: ",site,parameter1Name,tmp1$Measurement[1]))
+      GISBiochemDataL1 <- rbind(GISBiochemDataL1,GISBiochemDataSite)
       }
     }
-  }
 }
 
 #Select a geographic subset data frame from the total merged data set.
-selected <- GISBiochemDataH1H2
-suffix <- "H1H2"
+selected <- GISBiochemDataL1
+suffix <- "HighCaCO3"
 
 #Initialize a data frame where the rows are all of the unique measurements for a given
 #subset of the data.
@@ -501,10 +479,11 @@ write.table(eLSAInput,paste("eLSAInput",suffix,".txt",sep=""),quote=FALSE,sep="\
 #Compute network statistics of the likeliest association networks between taxa.
 library(igraph)
 library(network)
+suffix <- "HighCaCO3"
 networkdata <- read.delim(paste("eLSAOutput",suffix,".txt",sep=""),header=TRUE, sep="\t",as.is=T,check.names=FALSE)
 #Filter out association network data based on P scores, for the local similarity
 #between two factors, with values less than 0.05.
-networkdata <- filter(networkdata, P <= 0.05)
+networkdata <- filter(networkdata, P <= 0.01)
 names(networkdata)[names(networkdata)=="LS"]<-"weight"
 #Filter network data based on local similarity scores.
 #networkdata <- subset(networkdata,networkdata$weight>0)
@@ -515,15 +494,18 @@ chemID <- unique(chemData$FinalID)
 #Define a 'not in' function.
 '%!in%' <- function(x,y)!('%in%'(x,y))
 #Remove some subset of chemical and biological factors as nodes from the network.
-networkdata1 <- subset(networkdata,networkdata$X %!in% chemID & networkdata$Y %in% chemID)
-networkdata2 <- subset(networkdata,networkdata$Y %!in% chemID & networkdata$X %in% chemID)
-networkdata <- rbind(networkdata1,networkdata2)
-#networkdata <- subset(networkdata,networkdata$X %in% insectID)
-#networkdata <- subset(networkdata,networkdata$Y %in% insectID)
+#networkdata1 <- subset(networkdata,networkdata$X %!in% chemID & networkdata$Y %in% chemID)
+#networkdata2 <- subset(networkdata,networkdata$Y %!in% chemID & networkdata$X %in% chemID)
+#networkdata <- rbind(networkdata1,networkdata2)
+networkdata <- subset(networkdata,networkdata$X %!in% chemID)
+networkdata <- subset(networkdata,networkdata$Y %!in% chemID)
 
 #Generate network graph and begin calculating network parameters.
-networkgraph=graph.data.frame(networkdata,directed=TRUE)
-plot(networkgraph,layout=layout.circle(networkgraph),vertex.size=5*degree(networkgraph),edge.width=abs(E(networkgraph)$weight*10),edge.color=ifelse(E(networkgraph)$weight > 0, "blue","red"))
+networkgraph=graph.data.frame(networkdata,directed=FALSE)
+l <- layout.circle(networkgraph)
+l <- norm_coords(l, ymin=-1, ymax=1, xmin=-1, xmax=1)
+par(mfrow=c(1,1), mar=c(0,0,0,0))
+plot(networkgraph,rescale=F,layout=l*1.0,vertex.size=5*degree(networkgraph),edge.width=abs(E(networkgraph)$weight*10),edge.color=ifelse(E(networkgraph)$weight > 0, "blue","red"))
 # Calculate the average network path length
 mean_distance(networkgraph,directed=FALSE)
 # Calculate the clustering coefficient
