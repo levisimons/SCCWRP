@@ -196,7 +196,7 @@ names(chemDataCEDEN)[names(chemDataCEDEN)=="Analyte"]<-"FinalID"
 names(chemDataCEDEN)[names(chemDataCEDEN)=="Result"]<-"Measurement"
 names(chemDataCEDEN)[names(chemDataCEDEN)=="Unit"]<-"MeasurementType"
 #Force a uniform date format
-chemDataCEDEN$SampleDate <- ymd(chemDataCEDEN$SampleDate)
+chemDataCEDEN$SampleDate <- as.Date(chemDataCEDEN$SampleDate,format="%m/%d/%y")
 #Create unique ID combining the sample station ID and sampling date.
 chemDataCEDEN$UniqueID <- with(chemDataCEDEN,paste(chemDataCEDEN$SampleStationID,"CEDEN",chemDataCEDEN$SampleDate))
 #Find sampling year.
@@ -250,35 +250,92 @@ GISBiochemData <- filter(GISBiochemData,Measurement>=0)
 #Filter out duplicate rows.
 GISBiochemData <- GISBiochemData[!duplicated(GISBiochemData),]
 
+#Read in the covariant component of the networks generated via land usage subsetting
+covariantNetwork <- read.csv("SCCWRPNetworkAnalysisLandP01Covariant.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+covariantNetwork[covariantNetwork=="#DIV/0!" | covariantNetwork=="#NUM!"] <- "NA"
+covariantNetwork <- cbind(covariantNetwork[,1:3],data.frame(sapply(covariantNetwork[,4:ncol(covariantNetwork)],function(x) as.numeric(as.character(x)))))
+
+#Read in the covariant component of the networks generated via land usage subsetting
+contravariantNetwork <- read.csv("SCCWRPNetworkAnalysisLandP01Contravariant.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+contravariantNetwork[contravariantNetwork=="#DIV/0!" | contravariantNetwork=="#NUM!"] <- "NA"
+contravariantNetwork <- cbind(contravariantNetwork[,1:3],data.frame(sapply(contravariantNetwork[,4:ncol(contravariantNetwork)],function(x) as.numeric(as.character(x)))))
+
+#Read in California Stream Condition Index data
+csciData <- read.csv("csci_scored_sites_tbl.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+csciData <- filter(csciData,CSCI!="NA")
+names(csciData)[names(csciData)=="StationCode"]<-"SampleStationID"
+
 #Calculate land usage index based on 1K, 5K, and catchment zone values.
 #Use land usage data from 2011.
 GISBiochemData$LU_2011_1K <- with(GISBiochemData,Ag_2011_1K+CODE_21_2011_1K+URBAN_2011_1K)
 GISBiochemData$LU_2011_5K <- with(GISBiochemData,Ag_2011_5K+CODE_21_2011_5K+URBAN_2011_5K)
 GISBiochemData$LU_2011_WS <- with(GISBiochemData,Ag_2011_WS+CODE_21_2011_WS+URBAN_2011_WS)
 
+#Filter out data without a land usage index.
+GISBiochemData <- filter(GISBiochemData,LU_2011_1K!="NA")
+GISBiochemData <- filter(GISBiochemData,LU_2011_5K!="NA")
+GISBiochemData <- filter(GISBiochemData,LU_2011_WS!="NA")
+
 #Subset site data based on land usage index within 1K catchment zones.
 #LD = low disturbance.  Land usage index is less than 5%.
 GISBiochemDataLD1K <- GISBiochemData[which(GISBiochemData$LU_2011_1K < 5),]
+GISBiochemDataLD1K$LUCategory <- "LD1K"
 #MD = low disturbance.  Land usage index is between 5% and 15%.
 GISBiochemDataMD1K <- GISBiochemData[which(GISBiochemData$LU_2011_1K < 15 & GISBiochemData$LU_2011_1K >= 5),]
+GISBiochemDataMD1K$LUCategory <- "MD1K"
 #HD = low disturbance.  Land usage index is greater than 15%.
 GISBiochemDataHD1K <- GISBiochemData[which(GISBiochemData$LU_2011_1K >= 15),]
+GISBiochemDataHD1K$LUCategory <- "HD1K"
 
 #Subset site data based on land usage index within 5K catchment zones.
 #LD = low disturbance.  Land usage index is less than 5%.
 GISBiochemDataLD5K <- GISBiochemData[which(GISBiochemData$LU_2011_5K < 5),]
+GISBiochemDataLD5K$LUCategory <- "LD5K"
 #MD = low disturbance.  Land usage index is between 5% and 15%.
 GISBiochemDataMD5K <- GISBiochemData[which(GISBiochemData$LU_2011_5K < 15 & GISBiochemData$LU_2011_5K >= 5),]
+GISBiochemDataMD5K$LUCategory <- "MD5K"
 #HD = low disturbance.  Land usage index is greater than 15%.
 GISBiochemDataHD5K <- GISBiochemData[which(GISBiochemData$LU_2011_5K >= 15),]
+GISBiochemDataHD5K$LUCategory <- "HD5K"
 
 #Subset site data based on land usage index within the full water drainage catchment zones.
 #LD = low disturbance.  Land usage index is less than 5%.
 GISBiochemDataLDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 5),]
+GISBiochemDataLDWS$LUCategory <- "LDWS"
 #MD = low disturbance.  Land usage index is between 5% and 15%.
 GISBiochemDataMDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 15 & GISBiochemData$LU_2011_WS >= 5),]
+GISBiochemDataMDWS$LUCategory <- "MDWS"
 #HD = low disturbance.  Land usage index is greater than 15%.
 GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
+GISBiochemDataHDWS$LUCategory <- "HDWS"
+
+#Merge land usage subsets back together for later analytical tools.
+GISBiochemData <- do.call("rbind",list(GISBiochemDataLD1K,GISBiochemDataMD1K,GISBiochemDataHD1K,GISBiochemDataLD5K,GISBiochemDataMD5K,GISBiochemDataHD5K,GISBiochemDataLDWS,GISBiochemDataMDWS,GISBiochemDataHDWS))
+
+#Merge in CSCI data and network statistics data
+GISBiochemcsciData <- join(GISBiochemData,csciData,by="SampleStationID")
+GISBiochemcsciDataCovariant <- join(GISBiochemcsciData,covariantNetwork,by="LUCategory")
+GISBiochemcsciDataCovariant <- filter(GISBiochemcsciDataCovariant,GISBiochemcsciDataCovariant$CSCI!="NA" & GISBiochemcsciDataCovariant$l_rL!="NA")
+GISBiochemcsciDataContravariant <- join(GISBiochemcsciData,contravariantNetwork,by="LUCategory")
+GISBiochemcsciDataContravariant <- filter(GISBiochemcsciDataContravariant,GISBiochemcsciDataContravariant$CSCI!="NA" & GISBiochemcsciDataContravariant$l_rL!="NA")
+
+#Add in a scaled ratio.
+# -10*l_r = rL for mapping.
+GISBiochemcsciDataCovariant$rL <- -30*(GISBiochemcsciDataCovariant$l_rL)
+GISBiochemcsciDataContravariant$rL <- -30*(GISBiochemcsciDataContravariant$l_rL)
+
+#Generate map of data for a given chemical parameter in California.
+library(ggmap)
+library(maps)
+library(mapdata)
+dev.off()
+MapCoordinates <- data.frame(GISBiochemcsciDataContravariant$rL,GISBiochemcsciDataContravariant$CSCIQualifier,GISBiochemcsciDataContravariant$Longitude,GISBiochemcsciDataContravariant$Latitude)
+colnames(MapCoordinates) = c('SECND','CSCIQualifier','lon','lat')
+MapCoordinates <- na.omit(MapCoordinates)
+mapBoundaries <- make_bbox(lon=MapCoordinates$lon,lat=MapCoordinates$lat,f=0.1)
+CalMap <- get_map(location=mapBoundaries,maptype="satellite",source="google")
+CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = CSCIQualifier, size=SECND))+ggtitle("Stream disturbance and the Scaled Ecological Contravariant Network Distance (SECND)",subtitle="SECND = -30*log(L_contravariant/L_random)")
+CalMap
 
 #Find the average value of the parameters most strongly correlated to the top
 #two principal components which describe variations in chemical parameter space
@@ -288,13 +345,15 @@ GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
 #principal components 1 and 2.
 i=0
 parameter1 <- data.frame()
-parameter1Name <- "Hardness as CaCO3"
+parameter1Name <- "Nitrate + Nitrite as N"
 for(site in unique(GISBiochemData$UniqueID)){
   GISBiochemDataSite <- GISBiochemData[GISBiochemData$UniqueID == site,]
   if(parameter1Name %in% GISBiochemDataSite$FinalID){
     i=i+1
     tmp1 <- GISBiochemDataSite[which(GISBiochemDataSite$FinalID==parameter1Name),]
-    parameter1 <- rbind(parameter1,tmp1$Measurement[1])
+    if(tmp1$Measurement[1]>0){
+      parameter1 <- rbind(parameter1,tmp1$Measurement[1])
+    }
     print(paste(tmp1))
   }
 }
@@ -325,8 +384,8 @@ for(site in unique(GISBiochemData$UniqueID)){
 }
 
 #Select a geographic subset data frame from the total merged data set.
-selected <- GISBiochemDataL1
-suffix <- "HighCaCO3"
+selected <- GISBiochemDataH1
+suffix <- "HighNitrateNitrite"
 
 #Initialize a data frame where the rows are all of the unique measurements for a given
 #subset of the data.
@@ -479,14 +538,14 @@ write.table(eLSAInput,paste("eLSAInput",suffix,".txt",sep=""),quote=FALSE,sep="\
 #Compute network statistics of the likeliest association networks between taxa.
 library(igraph)
 library(network)
-suffix <- "HighCaCO3"
+suffix <- "HighNitrateNitrite"
 networkdata <- read.delim(paste("eLSAOutput",suffix,".txt",sep=""),header=TRUE, sep="\t",as.is=T,check.names=FALSE)
 #Filter out association network data based on P scores, for the local similarity
 #between two factors, with values less than 0.05.
 networkdata <- filter(networkdata, P <= 0.01)
 names(networkdata)[names(networkdata)=="LS"]<-"weight"
 #Filter network data based on local similarity scores.
-#networkdata <- subset(networkdata,networkdata$weight>0)
+networkdata <- subset(networkdata,networkdata$weight<0)
 algaeID <- unique(algaeData$FinalID)
 insectID <- unique(insectData$FinalID)
 chemID <- unique(chemData$FinalID)
