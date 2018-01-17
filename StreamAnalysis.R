@@ -319,8 +319,12 @@ GISBiochemcsciDataCovariant <- filter(GISBiochemcsciDataCovariant,GISBiochemcsci
 GISBiochemcsciDataContravariant <- join(GISBiochemcsciData,contravariantNetwork,by="LUCategory")
 GISBiochemcsciDataContravariant <- filter(GISBiochemcsciDataContravariant,GISBiochemcsciDataContravariant$CSCI!="NA" & GISBiochemcsciDataContravariant$l_rL!="NA")
 
-#Add in a scaled ratio.
-# -10*l_r = rL for mapping.
+#Subselect data by geographic selection scales (1km, 5km, or watershed)
+GISBiochemcsciDataContravariant <- filter(GISBiochemcsciDataContravariant,SelectionZone=="Watershed")
+GISBiochemcsciDataCovariant <- filter(GISBiochemcsciDataCovariant,SelectionZone=="Watershed")
+
+#Add in a scaled ratio in order to help plot the log ratio of network path lengths.
+# -30*l_r = rL for mapping.
 GISBiochemcsciDataCovariant$rL <- -30*(GISBiochemcsciDataCovariant$l_rL)
 GISBiochemcsciDataContravariant$rL <- -30*(GISBiochemcsciDataContravariant$l_rL)
 
@@ -334,7 +338,7 @@ colnames(MapCoordinates) = c('SECND','CSCIQualifier','lon','lat')
 MapCoordinates <- na.omit(MapCoordinates)
 mapBoundaries <- make_bbox(lon=MapCoordinates$lon,lat=MapCoordinates$lat,f=0.1)
 CalMap <- get_map(location=mapBoundaries,maptype="satellite",source="google")
-CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = CSCIQualifier, size=SECND))+ggtitle("Stream disturbance and the Scaled Ecological Contravariant Network Distance (SECND)",subtitle="SECND = -30*log(L_contravariant/L_random)")
+CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = CSCIQualifier, size=SECND))+ggtitle("Stream disturbance and the Scaled Ecological Contravariant Network Distance (SECND)\nWatershed selection scale",subtitle="SECND = -30*log(L_contravariant/L_random)")
 CalMap
 
 #Check for correlations between network parameters and the CSCI
@@ -343,15 +347,15 @@ v <- na.omit(v)
 landCor <- round(cor(v[,1],v[,2],method="pearson"),4)
 landP <- round(cor.test(v[,1],v[,2],method="pearson")$p.value,4)
 dev.off()
-plot(v[,1],v[,2],main=paste("Covariant l_rL vs. CSCI","\n","Pearson r = ",landCor,"p = ",landP),ylab="Covariant l_rL",xlab="CSCI")
+plot(v[,1],v[,2],main=paste("Covariant l_rL vs. CSCI, 1km selection scale","\n","Pearson r = ",landCor,"p = ",landP),ylab="Covariant l_rL",xlab="CSCI")
 abline(lm(v[,2]~v[,1]),col="red")
-v <- cbind(as.numeric(GISBiochemcsciDataContravariant$CSCI),as.numeric(GISBiochemcsciDataContravariant$1_rL))
+v <- cbind(as.numeric(GISBiochemcsciDataContravariant$CSCI),as.numeric(GISBiochemcsciDataContravariant$l_rL))
 v <- na.omit(v)
 cor(v[,1],v[,2],method="pearson")
 landCor <- round(cor(v[,1],v[,2],method="pearson"),4)
 landP <- round(cor.test(v[,1],v[,2],method="pearson")$p.value,4)
 dev.off()
-plot(v[,1],v[,2],main=paste("Contravariant l_rL vs. CSCI","\n","Pearson r = ",landCor,"p = ",landP),ylab="Contravariant l_rL",xlab="CSCI")
+plot(v[,1],v[,2],main=paste("Contravariant l_rL vs. CSCI, watershed selection scale","\n","Pearson r = ",landCor,"p = ",landP),ylab="Contravariant l_rL",xlab="CSCI")
 abline(lm(v[,2]~v[,1]),col="red")
 
 #Find the average value of the parameters most strongly correlated to the top
