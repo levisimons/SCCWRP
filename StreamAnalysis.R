@@ -322,12 +322,12 @@ GISBiochemcsciDataCovariant <- filter(GISBiochemcsciDataCovariant,GISBiochemcsci
 GISBiochemcsciDataContravariant <- join(GISBiochemcsciData,contravariantNetwork,by="LUCategory")
 GISBiochemcsciDataContravariant <- filter(GISBiochemcsciDataContravariant,GISBiochemcsciDataContravariant$CSCI!="NA" & GISBiochemcsciDataContravariant$l_rL!="NA")
 
-#Subselect data by geographic selection scales (1km, 5km, or watershed)
+#If you want to subselect data by geographic selection scales (1km, 5km, or watershed)
 GISBiochemcsciDataContravariant <- filter(GISBiochemcsciDataContravariant,SelectionZone=="Watershed")
 GISBiochemcsciDataCovariant <- filter(GISBiochemcsciDataCovariant,SelectionZone=="Watershed")
 
 #Add in a scaled ratio in order to help plot the log ratio of network path lengths.
-# -30*l_rL = rL for mapping.  Revert to -1*l_rL = rL for analysis.
+# -30*l_rL = rL for mapping.
 GISBiochemcsciDataCovariant$rL <- -30*(GISBiochemcsciDataCovariant$l_rL)
 GISBiochemcsciDataContravariant$rL <- -30*(GISBiochemcsciDataContravariant$l_rL)
 
@@ -341,13 +341,13 @@ colnames(MapCoordinates) = c('SECND','CSCIQualifier','lon','lat')
 MapCoordinates <- na.omit(MapCoordinates)
 mapBoundaries <- make_bbox(lon=MapCoordinates$lon,lat=MapCoordinates$lat,f=0.1)
 CalMap <- get_map(location=mapBoundaries,maptype="satellite",source="google")
-CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = CSCIQualifier, size=SECND))+ggtitle("Stream disturbance and the Scaled Ecological Contravariant Network Distance (SECND)\nAll selection scales",subtitle="SECND = -30*log(L_contravariant/L_random)")
+CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = CSCIQualifier, size=SECND))+ggtitle("Stream disturbance and the Scaled Ecological Contravariant Network Distance (SECND)\n1 km selection scales",subtitle="SECND = -30*log(L_contravariant/L_random)")
 CalMap
 
 #Logistic regression between network parameters and CSCI
 library(aod)
 library(rcompanion)
-logReg <- glm(formula = CSCIQualNum ~ l_rL, data = GISBiochemcsciDataContravariant, family=binomial(link="logit"))
+logReg <- glm(formula = CSCIQualNum ~ rL, data = GISBiochemcsciDataContravariant, family=binomial(link="logit"))
 #Determine pseudo-r^2 and p for logistic model.
 nagelkerke(logReg)
 #Summary statistics for logistic model.
@@ -357,7 +357,7 @@ nagelkerke(logReg)
 #The estimate of variable, in this case l_rL, is k.
 #The estimate of the intercept is b.
 #Solve for the value of the target variable which gives a probability of p that the binomial model is in a state of 1 versus 0.
-#x = [log(p/(1-p))-b]/k for a given value of p, b, and k.
+#x = -1*([log(p/(1-p))-b]/k) for a given value of p, b, and k.
 summary(logReg)
 
 #Check for correlations between network parameters and the CSCI
@@ -366,15 +366,15 @@ v <- na.omit(v)
 landCor <- round(cor(v[,1],v[,2],method="pearson"),4)
 landP <- round(cor.test(v[,1],v[,2],method="pearson")$p.value,4)
 dev.off()
-plot(v[,1],v[,2],main=paste("Covariant l_rL vs. CSCI, 1km selection scale","\n","Pearson r = ",landCor,"p = ",landP),ylab="Covariant l_rL",xlab="CSCI")
+plot(v[,1],v[,2],main=paste("Covariant l_rL vs. CSCI, All selection scales","\n","Pearson r = ",landCor,"p = ",landP),ylab="Covariant l_rL",xlab="CSCI")
 abline(lm(v[,2]~v[,1]),col="red")
-v <- cbind(as.numeric(GISBiochemcsciDataContravariant$CSCI),as.numeric(GISBiochemcsciDataContravariant$l_rL))
+v <- cbind(as.numeric(GISBiochemcsciDataContravariant$CSCI),as.numeric(GISBiochemcsciDataContravariant$rL))
 v <- na.omit(v)
 cor(v[,1],v[,2],method="pearson")
 landCor <- round(cor(v[,1],v[,2],method="pearson"),4)
 landP <- round(cor.test(v[,1],v[,2],method="pearson")$p.value,4)
 dev.off()
-plot(v[,1],v[,2],main=paste("Contravariant l_rL vs. CSCI, watershed selection scale","\n","Pearson r = ",landCor,"p = ",landP),ylab="Contravariant l_rL",xlab="CSCI")
+plot(v[,1],v[,2],main=paste("SECND vs. CSCI, 1km selection scale","\n","Pearson r = ",landCor,"p = ",landP),ylab="SECND",xlab="CSCI")
 abline(lm(v[,2]~v[,1]),col="red")
 
 #Find the average value of the parameters most strongly correlated to the top
