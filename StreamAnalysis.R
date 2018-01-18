@@ -264,6 +264,9 @@ contravariantNetwork <- cbind(contravariantNetwork[,1:3],data.frame(sapply(contr
 csciData <- read.csv("csci_scored_sites_tbl.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
 csciData <- filter(csciData,CSCI!="NA")
 names(csciData)[names(csciData)=="StationCode"]<-"SampleStationID"
+#Add in qualifier columns based on California Streams Condition Index.  The cutoff is 0.79.
+csciData$CSCIQualifier <- ifelse(csciData$CSCI >= 0.79, "Healthy","Disturbed")
+csciData$CSCIQualNum <- ifelse(csciData$CSCI >= 0.79, 1,0)
 
 #Calculate land usage index based on 1K, 5K, and catchment zone values.
 #Use land usage data from 2011.
@@ -324,7 +327,7 @@ GISBiochemcsciDataContravariant <- filter(GISBiochemcsciDataContravariant,Select
 GISBiochemcsciDataCovariant <- filter(GISBiochemcsciDataCovariant,SelectionZone=="Watershed")
 
 #Add in a scaled ratio in order to help plot the log ratio of network path lengths.
-# -30*l_r = rL for mapping.
+# -30*l_rL = rL for mapping.  Revert to -1*l_rL = rL for analysis.
 GISBiochemcsciDataCovariant$rL <- -30*(GISBiochemcsciDataCovariant$l_rL)
 GISBiochemcsciDataContravariant$rL <- -30*(GISBiochemcsciDataContravariant$l_rL)
 
@@ -338,8 +341,24 @@ colnames(MapCoordinates) = c('SECND','CSCIQualifier','lon','lat')
 MapCoordinates <- na.omit(MapCoordinates)
 mapBoundaries <- make_bbox(lon=MapCoordinates$lon,lat=MapCoordinates$lat,f=0.1)
 CalMap <- get_map(location=mapBoundaries,maptype="satellite",source="google")
-CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = CSCIQualifier, size=SECND))+ggtitle("Stream disturbance and the Scaled Ecological Contravariant Network Distance (SECND)\nWatershed selection scale",subtitle="SECND = -30*log(L_contravariant/L_random)")
+CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = CSCIQualifier, size=SECND))+ggtitle("Stream disturbance and the Scaled Ecological Contravariant Network Distance (SECND)\nAll selection scales",subtitle="SECND = -30*log(L_contravariant/L_random)")
 CalMap
+
+#Logistic regression between network parameters and CSCI
+library(aod)
+library(rcompanion)
+logReg <- glm(formula = CSCIQualNum ~ l_rL, data = GISBiochemcsciDataContravariant, family=binomial(link="logit"))
+#Determine pseudo-r^2 and p for logistic model.
+nagelkerke(logReg)
+#Summary statistics for logistic model.
+#log(p/(1-p)) = k*x + b.
+#The probability of the binomial model being in a state of 1, versus 0, is p.
+#First decide a value of p, such as 0.95 for 95% probability.
+#The estimate of variable, in this case l_rL, is k.
+#The estimate of the intercept is b.
+#Solve for the value of the target variable which gives a probability of p that the binomial model is in a state of 1 versus 0.
+#x = [log(p/(1-p))-b]/k for a given value of p, b, and k.
+summary(logReg)
 
 #Check for correlations between network parameters and the CSCI
 v <- cbind(as.numeric(GISBiochemcsciDataCovariant$CSCI),as.numeric(GISBiochemcsciDataCovariant$l_rL))
@@ -559,7 +578,7 @@ write.table(eLSAInput,paste("eLSAInput",suffix,".txt",sep=""),quote=FALSE,sep="\
 #Compute network statistics of the likeliest association networks between taxa.
 library(igraph)
 library(network)
-suffix <- "HighNitrateNitrite"
+suffix <- "HighSilica"
 networkdata <- read.delim(paste("eLSAOutput",suffix,".txt",sep=""),header=TRUE, sep="\t",as.is=T,check.names=FALSE)
 #Filter out association network data based on P scores, for the local similarity
 #between two factors, with values less than 0.05.
