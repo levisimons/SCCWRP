@@ -162,10 +162,17 @@ GISChemCSCIDataContravariant <- filter(GISChemCSCIDataContravariant,GISChemCSCID
 #Check for correlations between network parameters and the CSCI
 v <- cbind(as.numeric(GISChemCSCIDataCovariant$CSCI),as.numeric(GISChemCSCIDataCovariant$l_rL))
 v <- na.omit(v)
-cor(v[,1],v[,2])
+landCor <- round(cor(v[,1],v[,2],method="pearson"),4)
+dev.off()
+plot(v[,1],v[,2],main=paste("Covariant l_rL vs. CSCI","\n","Pearson r = ",landCor),ylab="Covariant l_rL",xlab="CSCI")
+abline(lm(v[,2]~v[,1]),col="red")
 v <- cbind(as.numeric(GISChemCSCIDataContravariant$CSCI),as.numeric(GISChemCSCIDataContravariant$l_rL))
 v <- na.omit(v)
-cor(v[,1],v[,2])
+cor(v[,1],v[,2],method="pearson")
+landCor <- round(cor(v[,1],v[,2],method="pearson"),4)
+dev.off()
+plot(v[,1],v[,2],main=paste("Contravariant l_rL vs. CSCI","\n","Pearson r = ",landCor),ylab="Contravariant l_rL",xlab="CSCI")
+abline(lm(v[,2]~v[,1]),col="red")
 
 #Create a unified dataframe of the averaged chemical parameters for each sample
 #in order to perform principal component analysis on water chemistry data.
@@ -188,11 +195,11 @@ library("factoextra")
 library(ggfortify)
 means <- data.frame(sapply(means, function(x) as.numeric(as.character(x))))
 log.means <- log(means)
-row.names(log.means) <- suffixList
+#row.names(log.means) <- suffixList
 log.means[is.na(log.means)] <- 0
 log.means <- log.means[,which(apply(log.means,2,var)!=0)]
 means.pca <- prcomp(log.means,center=TRUE,scale.=TRUE)
-autoplot(means.pca,colour="OrthoPhosphate.as.P")
+autoplot(means.pca)
 var <- get_pca_var(means.pca)
 var$coord[,1:3]
 # Correlation between variables and principal components
@@ -217,7 +224,7 @@ comp.cos2 <- apply(var.cos2, 2, sum)
 contrib <- function(var.cos2, comp.cos2){var.cos2*100/comp.cos2}
 var.contrib <- t(apply(var.cos2,1, contrib, comp.cos2))
 (var.contrib[,1:2])
-fviz_cos2(means.pca, choice = "var", axes = 1:2)
+fviz_cos2(means.pca, choice = "var", axes = 1)
 chemCor<-fviz_cos2(means.pca, choice = "var", axes = 1:2)$data
 
 #Determine how correlated each chemical parameter is with land usage indices.
@@ -227,9 +234,9 @@ chemLand <- corRow
 for(uniqueChem in unique(GISChemData$FinalID)){
   tmp2 <- filter(GISChemData,GISChemData$FinalID==uniqueChem & GISChemData$Measurement!="NA" & GISChemData$LU_2011_1K!="NA")
   corRow$Parameter <- uniqueChem
-  corRow$`Correlation with LU_2011_1K` <- cor(tmp2$Measurement,tmp2$LU_2011_1K)
-  corRow$`Correlation with LU_2011_5K` <- cor(tmp2$Measurement,tmp2$LU_2011_5K)
-  corRow$`Correlation with LU_2011_WS` <- cor(tmp2$Measurement,tmp2$LU_2011_WS)
+  corRow$`Correlation with LU_2011_1K` <- cor(tmp2$Measurement,tmp2$LU_2011_1K,method="spearman")
+  corRow$`Correlation with LU_2011_5K` <- cor(tmp2$Measurement,tmp2$LU_2011_5K,method="spearman")
+  corRow$`Correlation with LU_2011_WS` <- cor(tmp2$Measurement,tmp2$LU_2011_WS,method="spearman")
   chemLand <- rbind(chemLand,corRow)
   print(corRow[1,])
 }
