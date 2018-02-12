@@ -578,14 +578,14 @@ write.table(eLSAInput,paste("eLSAInput",suffix,".txt",sep=""),quote=FALSE,sep="\
 #Compute network statistics of the likeliest association networks between taxa.
 library(igraph)
 library(network)
-suffix <- "HighSilica"
+suffix <- "HD1K"
 networkdata <- read.delim(paste("eLSAOutput",suffix,".txt",sep=""),header=TRUE, sep="\t",as.is=T,check.names=FALSE)
 #Filter out association network data based on P scores, for the local similarity
 #between two factors, with values less than 0.05.
 networkdata <- filter(networkdata, P <= 0.01)
 names(networkdata)[names(networkdata)=="LS"]<-"weight"
 #Filter network data based on local similarity scores.
-networkdata <- subset(networkdata,networkdata$weight<0)
+networkdata <- subset(networkdata,networkdata$weight>0)
 algaeID <- unique(algaeData$FinalID)
 insectID <- unique(insectData$FinalID)
 chemID <- unique(chemData$FinalID)
@@ -601,22 +601,30 @@ networkdata <- subset(networkdata,networkdata$Y %!in% chemID)
 
 #Generate network graph and begin calculating network parameters.
 networkgraph=graph.data.frame(networkdata,directed=FALSE)
-l <- layout.circle(networkgraph)
+l <- layout_with_fr(networkgraph)
 l <- norm_coords(l, ymin=-1, ymax=1, xmin=-1, xmax=1)
 par(mfrow=c(1,1), mar=c(0,0,0,0))
-plot(networkgraph,rescale=F,layout=l*1.0,vertex.size=5*degree(networkgraph),edge.width=abs(E(networkgraph)$weight*10),edge.color=ifelse(E(networkgraph)$weight > 0, "blue","red"))
+#Option 1: plot just the structure of the network.
+V(networkgraph)$label <- ""
+plot(networkgraph,vertex.size=3)
+#Option 2: plot the network and weight links by LS scores and node size by number of links.
+#plot(networkgraph,rescale=F,layout=l*1.0,vertex.size=5*degree(networkgraph),edge.width=abs(E(networkgraph)$weight*10),edge.color=ifelse(E(networkgraph)$weight > 0, "blue","red"))
 # Calculate the average network path length
 mean_distance(networkgraph,directed=FALSE)
 # Calculate the clustering coefficient
 transitivity(networkgraph,type="globalundirected",isolate="zero")
 # Generate adjacency matrix of relative taxa abundance correlations
-adj= as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=TRUE,loops=FALSE,matrix.type="adjacency")
+adj= as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
 # Get the number of unique network edges
 network.edgecount(adj)
 # Get the number of nodes
 network.size(adj)
 # Get the network density.
 network.density(adj)
+
+#Plot a corresponding random graph given a number of edges and nodes.
+RandGraph <- erdos.renyi.game(network.size(adj),network.edgecount(adj),type="gnm")
+plot(RandGraph, vertex.label= NA, edge.arrow.size=0.02,vertex.size = 3, xlab = "Random Network: G(N,L) model")
 
 library(vcd)
 library(MASS)
