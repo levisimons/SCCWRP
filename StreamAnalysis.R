@@ -578,14 +578,14 @@ write.table(eLSAInput,paste("eLSAInput",suffix,".txt",sep=""),quote=FALSE,sep="\
 #Compute network statistics of the likeliest association networks between taxa.
 library(igraph)
 library(network)
-suffix <- "HD1K"
+suffix <- "LDWS"
 networkdata <- read.delim(paste("eLSAOutput",suffix,".txt",sep=""),header=TRUE, sep="\t",as.is=T,check.names=FALSE)
 #Filter out association network data based on P scores, for the local similarity
 #between two factors, with values less than 0.05.
 networkdata <- filter(networkdata, P <= 0.01)
 names(networkdata)[names(networkdata)=="LS"]<-"weight"
 #Filter network data based on local similarity scores.
-networkdata <- subset(networkdata,networkdata$weight>0)
+networkdata <- subset(networkdata,networkdata$weight<0)
 algaeID <- unique(algaeData$FinalID)
 insectID <- unique(insectData$FinalID)
 chemID <- unique(chemData$FinalID)
@@ -609,6 +609,8 @@ V(networkgraph)$label <- ""
 plot(networkgraph,vertex.size=3)
 #Option 2: plot the network and weight links by LS scores and node size by number of links.
 #plot(networkgraph,rescale=F,layout=l*1.0,vertex.size=5*degree(networkgraph),edge.width=abs(E(networkgraph)$weight*10),edge.color=ifelse(E(networkgraph)$weight > 0, "blue","red"))
+# Calculate number of groups and the modularity of the network.
+cluster_edge_betweenness(networkgraph, weights=NULL,directed=FALSE)
 # Calculate the average network path length
 mean_distance(networkgraph,directed=FALSE)
 # Calculate the clustering coefficient
