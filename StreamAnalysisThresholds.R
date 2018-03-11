@@ -377,55 +377,44 @@ dev.off()
 plot(v[,1],v[,2],main=paste("SECND vs. CSCI, 1km selection scale","\n","Pearson r = ",landCor,"p = ",landP),ylab="SECND",xlab="CSCI")
 abline(lm(v[,2]~v[,1]),col="red")
 
-#Find the average value of the parameters most strongly correlated to the top
-#two principal components which describe variations in chemical parameter space
-#given changes in land usage intensity.  These averages will be used to split
+#Use threshold values of the parameters determined to be known stressors (Ode, 2007).
+#These threshold values will be used to split
 #the site data according to sites above or below the average parameter values.
-#parameter1 = strongly correlated parameter to axis composed of
-#principal components 1 and 2.
-i=0
-parameter1 <- data.frame()
-parameter1Name <- "Nitrate + Nitrite as N"
-for(site in unique(GISBiochemData$UniqueID)){
-  GISBiochemDataSite <- GISBiochemData[GISBiochemData$UniqueID == site,]
-  if(parameter1Name %in% GISBiochemDataSite$FinalID){
-    i=i+1
-    tmp1 <- GISBiochemDataSite[which(GISBiochemDataSite$FinalID==parameter1Name),]
-    if(tmp1$Measurement[1]>0){
-      parameter1 <- rbind(parameter1,tmp1$Measurement[1])
-    }
-    print(paste(tmp1))
-  }
-}
+#parameter1 = parameter name.  Three bands are used to split values.
 
-parameter1Ave <- colMeans(as.data.frame(rowMeans(parameter1,na.rm=TRUE)),na.rm=TRUE)
-print(paste("There are",i,"rows where this parameter is measured.",sep=" "))
-print(paste("Average value",parameter1Name,":",parameter1Ave,sep=" "))
+parameter1Name = "Chloride"
+parameter1L = 260
+parameter1H = 260
 
 #Split site data based on the average value of the two parameters.
 #Given the most significant chemical factors related to changes in land usage
 #subset site data based on those values.
-#H1 = high parameter 1 concentration.  L1 = low parameter 1 concentration.
+#H1 = high parameter 1 concentration.  M1 = medium parameter 1 concentration.  L1 = low parameter 1 concentration.
 GISBiochemDataH1 <- data.frame()
+GISBiochemDataM1 <- data.frame()
 GISBiochemDataL1 <- data.frame()
 for(site in unique(GISBiochemData$UniqueID)){
   GISBiochemDataSite <- GISBiochemData[GISBiochemData$UniqueID == site,]
   if(parameter1Name %in% GISBiochemDataSite$FinalID){
     tmp1 <- GISBiochemDataSite[which(GISBiochemDataSite$FinalID==parameter1Name),]
-    if(tmp1$Measurement[1]>parameter1Ave){
+    if(tmp1$Measurement[1]>parameter1H){
       print(paste("H1: ",site,parameter1Name,tmp1$Measurement[1]))
       GISBiochemDataH1 <- rbind(GISBiochemDataH1,GISBiochemDataSite)
-      }
-    if(tmp1$Measurement[1]<parameter1Ave){
+    }
+    if(tmp1$Measurement[1]<=parameter1H & tmp1$Measurement[1]>=parameter1L){
+      print(paste("M1: ",site,parameter1Name,tmp1$Measurement[1]))
+      GISBiochemDataM1 <- rbind(GISBiochemDataM1,GISBiochemDataSite)
+    }
+    if(tmp1$Measurement[1]<parameter1L){
       print(paste("L1: ",site,parameter1Name,tmp1$Measurement[1]))
       GISBiochemDataL1 <- rbind(GISBiochemDataL1,GISBiochemDataSite)
-      }
     }
+  }
 }
 
 #Select a geographic subset data frame from the total merged data set.
-selected <- GISBiochemDataH1
-suffix <- "HighNitrateNitrite"
+selected <- GISBiochemDataL1
+suffix <- "LTChloride"
 
 #Initialize a data frame where the rows are all of the unique measurements for a given
 #subset of the data.
@@ -493,76 +482,6 @@ for(year in unique(selected$Year)){
 }
 
 eLSAInput <- eLSAtmp
-
-#If you want to determine the average parameter values across the subsetted data set.
-library(matrixStats)
-eLSAAverage <- eLSAInput
-eLSAAverage <- as.data.frame(sapply(eLSAAverage,as.numeric))
-eLSAAverage$FinalID <- eLSAInput$FinalID
-eLSAAverage$mean <- rowMeans(eLSAAverage[,2:ncol(eLSAAverage)],na.rm=TRUE)
-eLSAAverage$median <- rowMedians(as.matrix(eLSAAverage[,2:ncol(eLSAAverage)]),na.rm=TRUE)
-eLSAAverage$STDEV <- rowSds(as.matrix(eLSAAverage[,2:ncol(eLSAAverage)]),na.rm=TRUE)
-
-#If you want to output the parameter averages for a given geographic subset of data.
-chemID <- unique(chemData$FinalID)
-eLSAAverage <- subset(eLSAAverage,eLSAAverage$FinalID %in% chemID)[,c(-2:-(ncol(eLSAAverage)-3))]
-colnames(eLSAAverage) <- c("FinalID",paste("mean",suffix),"median","STDEV")
-write.table(eLSAAverage,paste("eLSAAverage",suffix,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
-
-#Aggreate all of the mean physical parameter averages into a single data frame
-#for analysis.  Make sure you've already generated these subsetted files first.
-suffixList = c("HD1K","MD1K","LD1K","HD5K","MD5K","LD5K","HDWS","MDWS","LDWS")
-means <- data.frame(chemID)
-colnames(means) <- c("FinalID")
-for(suffix in suffixList){
-  print(paste("eLSAAverage",suffix,".txt",sep=""))
-  parameter <- read.delim(paste("eLSAAverage",suffix,".txt",sep=""),header=TRUE, sep="\t",as.is=T,check.names=FALSE)
-  print(parameter[,-c(3:4)])
-  parameter <- data.frame(parameter[,-c(3:4)])
-  means <- join(means,parameter,by="FinalID")
-}
-means <- t(means)
-colnames(means) <- means[1,]
-means <- means[-1,]
-means <- as.data.frame(means)
-
-#Scale your average physical parameter dataframe to perform PCA.
-library("factoextra")
-means <- data.frame(sapply(means, function(x) as.numeric(as.character(x))))
-log.means <- log(means)
-row.names(log.means) <- suffixList
-log.means[is.na(log.means)] <- 0
-log.means <- log.means[,which(apply(log.means,2,var)!=0)]
-means.pca <- prcomp(log.means,center=TRUE,scale.=TRUE)
-var <- get_pca_var(means.pca)
-var$coord[,1:3]
-# Correlation between variables and principal components
-var_cor_func <- function(var.loadings, comp.sdev){
-  var.loadings*comp.sdev
-}
-#Plot the contributions of each principal component to the overall
-#variation in the data set.
-fviz_screeplot(means.pca)
-
-# Variable correlation/coordinates
-loadings <- means.pca$rotation
-sdev <- means.pca$sdev
-
-# Determine which physical variables drive most of the variation
-# in the principal components of the system.
-var.coord <- var.cor <- t(apply(loadings, 1, var_cor_func, sdev))
-var.coord[, 1:3]
-var.cos2 <- var.coord^2
-var.cos2[,1:3]
-comp.cos2 <- apply(var.cos2, 2, sum)
-contrib <- function(var.cos2, comp.cos2){var.cos2*100/comp.cos2}
-var.contrib <- t(apply(var.cos2,1, contrib, comp.cos2))
-head(var.contrib[,1:2])
-#Plot the chemical parameters most strongly correlated to a designated
-#individual or set of principal components.  Store the correlations in a dataframe.
-fviz_cos2(means.pca, choice = "var", axes = 1:2,sort.val="des")
-cos2Plot <- fviz_cos2(means.pca, choice = "var", axes = 1:2,sort.val="des",top=100)
-cos2Values <- cos2Plot$data
 
 #Output dataframe for use in eLSA.
 #Note that the the data needs to have at least two location replicates per time point
