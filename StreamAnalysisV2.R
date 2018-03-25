@@ -68,7 +68,7 @@ GISBiochemData$Cov_l_rL <-ifelse(GISBiochemData$Measurement>threshold,chemNetwor
 GISBiochemData$Cov_l_rCl <-ifelse(GISBiochemData$Measurement>threshold,chemNetworks[chemNetworks$Prefix=='HTN','Cov_l_rCl'],chemNetworks[chemNetworks$Prefix=='LTN','Cov_l_rCl'])  
 GISBiochemData$Cov_l_rM <-ifelse(GISBiochemData$Measurement>threshold,chemNetworks[chemNetworks$Prefix=='HTN','Cov_l_rM'],chemNetworks[chemNetworks$Prefix=='LTN','Cov_l_rM'])  
 
-testData <- select(GISBiochemData,CSCI,Con_l_rL,Con_l_rCl,Con_l_rM,Cov_l_rL,Cov_l_rCl,Cov_l_rM)
+testData <- select(GISBiochemData,CSCIQualNum,Con_l_rL,Con_l_rCl,Con_l_rM,Cov_l_rL,Cov_l_rCl,Cov_l_rM)
 testData <- na.omit(testData)
 
 #Logistic regression between network parameters and CSCI
@@ -78,6 +78,6 @@ library(glmm)
 library(rcompanion)
 model.vars <- names(testData)[2:7]
 model.list <- lapply(model.vars, function(x){
-  lm(substitute(CSCI ~ i, list(i=as.name(x))),data=testData)
+  glm(substitute(CSCIQualNum ~ i, list(i=as.name(x))),data=testData,family=binomial(link="logit"))
 })
-lapply(model.list,summary)
+lapply(model.list,predict)
