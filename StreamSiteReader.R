@@ -257,6 +257,69 @@ GISBiochemData <- filter(GISBiochemData,Measurement>=0)
 #Filter out duplicate rows.
 GISBiochemData <- GISBiochemData[!duplicated(GISBiochemData),]
 
+#Incorporate CSCI data.
+csciData <- read.csv("CSCI_dnaSites.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+csciData <- filter(csciData,CSCI!="NA")
+csciData <- subset(csciData,select=-c(StationCode))
+#Fix date format.
+csciData$SampleDate <- mdy(csciData$SampleDate)
+#Create UniqueID column to identify samples by site, date, and protocol.
+csciData$UniqueID <- with(csciData,paste(csciData$SampleStationID,csciData$DatabaseCode,csciData$SampleDate))
+#Add in qualifier columns based on California Streams Condition Index.  The cutoff is 0.79.
+csciData$CSCIQualifier <- ifelse(csciData$CSCI >= 0.79, "Healthy","Disturbed")
+csciData$CSCIQualNum <- ifelse(csciData$CSCI >= 0.79, 1,0)
+
+#Merge CSCI data by UniqueID
+GISBiochemData <- join(GISBiochemData,csciData,"UniqueID")
+
+#Calculate land usage index based on 1K, 5K, and catchment zone values.
+#Use land usage data from 2011.
+GISBiochemData$LU_2011_1K <- with(GISBiochemData,Ag_2011_1K+CODE_21_2011_1K+URBAN_2011_1K)
+GISBiochemData$LU_2011_5K <- with(GISBiochemData,Ag_2011_5K+CODE_21_2011_5K+URBAN_2011_5K)
+GISBiochemData$LU_2011_WS <- with(GISBiochemData,Ag_2011_WS+CODE_21_2011_WS+URBAN_2011_WS)
+
+#Filter out data without a land usage index.
+GISBiochemData <- subset(GISBiochemData,LU_2011_1K!="NA")
+GISBiochemData <- subset(GISBiochemData,LU_2011_5K!="NA")
+GISBiochemData <- subset(GISBiochemData,LU_2011_WS!="NA")
+
+#Subset site data based on land usage index within 1K catchment zones.
+#LD = low disturbance.  Land usage index is less than 5%.
+GISBiochemDataLD1K <- GISBiochemData[which(GISBiochemData$LU_2011_1K < 5),]
+GISBiochemDataLD1K$LUCategory <- "LD1K"
+#MD = low disturbance.  Land usage index is between 5% and 15%.
+GISBiochemDataMD1K <- GISBiochemData[which(GISBiochemData$LU_2011_1K < 15 & GISBiochemData$LU_2011_1K >= 5),]
+GISBiochemDataMD1K$LUCategory <- "MD1K"
+#HD = low disturbance.  Land usage index is greater than 15%.
+GISBiochemDataHD1K <- GISBiochemData[which(GISBiochemData$LU_2011_1K >= 15),]
+GISBiochemDataHD1K$LUCategory <- "HD1K"
+
+#Subset site data based on land usage index within 5K catchment zones.
+#LD = low disturbance.  Land usage index is less than 5%.
+GISBiochemDataLD5K <- GISBiochemData[which(GISBiochemData$LU_2011_5K < 5),]
+GISBiochemDataLD5K$LUCategory <- "LD5K"
+#MD = low disturbance.  Land usage index is between 5% and 15%.
+GISBiochemDataMD5K <- GISBiochemData[which(GISBiochemData$LU_2011_5K < 15 & GISBiochemData$LU_2011_5K >= 5),]
+GISBiochemDataMD5K$LUCategory <- "MD5K"
+#HD = low disturbance.  Land usage index is greater than 15%.
+GISBiochemDataHD5K <- GISBiochemData[which(GISBiochemData$LU_2011_5K >= 15),]
+GISBiochemDataHD5K$LUCategory <- "HD5K"
+
+#Subset site data based on land usage index within the full water drainage catchment zones.
+#LD = low disturbance.  Land usage index is less than 5%.
+GISBiochemDataLDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 5),]
+GISBiochemDataLDWS$LUCategory <- "LDWS"
+#MD = low disturbance.  Land usage index is between 5% and 15%.
+GISBiochemDataMDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS < 15 & GISBiochemData$LU_2011_WS >= 5),]
+GISBiochemDataMDWS$LUCategory <- "MDWS"
+#HD = low disturbance.  Land usage index is greater than 15%.
+GISBiochemDataHDWS <- GISBiochemData[which(GISBiochemData$LU_2011_WS >= 15),]
+GISBiochemDataHDWS$LUCategory <- "HDWS"
+
+#Merge land usage subsets back together for later analytical tools.
+GISBiochemData <- do.call("rbind",list(GISBiochemDataLD1K,GISBiochemDataMD1K,GISBiochemDataHD1K,GISBiochemDataLD5K,GISBiochemDataMD5K,GISBiochemDataHD5K,GISBiochemDataLDWS,GISBiochemDataMDWS,GISBiochemDataHDWS))
+
+
 #Write out merged data set to read back in the future as opposed to 
 #generating it each time from component data files.
 write.csv(GISBiochemData,file="GISBiochemData.csv",row.names=FALSE)
