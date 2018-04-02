@@ -144,116 +144,120 @@ for(networkFile in networkfiles){
   #Generate network graph and begin calculating network parameters.
   networkgraph=graph.data.frame(networkdata,directed=FALSE)
   if(ecount(networkgraph)>0){
-    for(i in 1:3){
-      if(i==1){
-        #Get the full weighted adjacency matrix.
-        networkmatrix <- as.matrix(get.adjacency(networkgraph,attr='weight'))
-        #Get the eigenvalues of the full weighted adjacency matrix.
-        lambda_network <- eigen(networkmatrix)
-        #Get the real component first eigenvalue.
-        lambda_network_1 <- Re(lambda_network$values[1])
-        #Generate randomized version of full weighted adjacency matrix.
-        set.seed(1)
-        randnetworkmatrix <- matrix(sample(as.vector((networkmatrix))),nrow=nrow(networkmatrix),ncol=ncol(networkmatrix))
-        #Get the eigenvalues of the full weighted adjacency matrix.
-        lambda_rand <- eigen(randnetworkmatrix)
-        #Get the real component of the first eigenvalue.
-        lambda_rand_1 <- Re(lambda_rand$values[1])
-        #Calculate stability parameter.
-        gamma <- lambda_network_1/lambda_rand_1
-      }
-      if(i==2){
-        #Filter network data based on local similarity scores.
-        networkdataCon <- subset(networkdata,networkdata$weight<0)
-        #Generate network graph and begin calculating network parameters.
-        networkgraph=graph.data.frame(networkdataCon,directed=FALSE)
-        if(ecount(networkgraph)>0){
-          # Generate adjacency matrix of relative taxa abundance correlations
-          adj= as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
-          # Get the number of unique network edges
-          networkEdgecount <- network.edgecount(adj)
-          # Get the number of nodes
-          networkNodecount <- network.size(adj)
-          # Get the average degree per node.
-          k <- (2*networkEdgecount)/networkNodecount
-          # Get the random characteristic path length.
-          networkRandLength <- 0.5+((log(networkNodecount)-0.5772156649)/log(k))
-          # Get the random clustering coefficient.
-          networkRandClustering <- k/networkNodecount
-          # Get the network density.
-          networkDensity <- network.density(adj)
-          # Calculate the modularity of the network.
-          networkModularity <- modularity(cluster_edge_betweenness(networkgraph, weights=NULL,directed=FALSE))
-          # Calculate the number of groups related to the modularity value.
-          networkModGroups <- length(cluster_edge_betweenness(networkgraph, weights=NULL,directed=FALSE))
-          # Calculate the average network path length
-          networkLength <- mean_distance(networkgraph,directed=FALSE)
-          # Calculate the clustering coefficient
-          networkClustering <- transitivity(networkgraph,type="globalundirected",isolate="zero")
-          # Calcuate the log ratio of clustering coefficients.
-          l_con_rCl <- log(networkClustering/networkRandClustering)
-          # Calculate the modularity of the random network.
-          networkRandModularity <- (1-(2/sqrt(networkNodecount)))*(2/k)^(2/3)
-          # Calculate the log ratio of the modularities.
-          l_con_rM <- log(networkModularity/networkRandModularity)
-          # Get log ratio of characteristic path lengths.
-          l_con_rL <- log(networkLength/networkRandLength)
-        }
-      }
-      if(i==3){
-        #Filter network data based on local similarity scores.
-        networkdataCov <- subset(networkdata,networkdata$weight>0)
-        #Generate network graph and begin calculating network parameters.
-        networkgraph=graph.data.frame(networkdataCon,directed=FALSE)
-        if(ecount(networkgraph)>0){
-          # Generate adjacency matrix of relative taxa abundance correlations
-          adj= as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
-          # Get the number of unique network edges
-          networkEdgecount <- network.edgecount(adj)
-          # Get the number of nodes
-          networkNodecount <- network.size(adj)
-          # Get the average degree per node.
-          k <- (2*networkEdgecount)/networkNodecount
-          # Get the random characteristic path length.
-          networkRandLength <- 0.5+((log(networkNodecount)-0.5772156649)/log(k))
-          # Get the random clustering coefficient.
-          networkRandClustering <- k/networkNodecount
-          # Get the network density.
-          networkDensity <- network.density(adj)
-          # Calculate the modularity of the network.
-          networkModularity <- modularity(cluster_edge_betweenness(networkgraph, weights=NULL,directed=FALSE))
-          # Calculate the number of groups related to the modularity value.
-          networkModGroups <- length(cluster_edge_betweenness(networkgraph, weights=NULL,directed=FALSE))
-          # Calculate the average network path length
-          networkLength <- mean_distance(networkgraph,directed=FALSE)
-          # Calculate the clustering coefficient
-          networkClustering <- transitivity(networkgraph,type="globalundirected",isolate="zero")
-          # Calcuate the log ratio of clustering coefficients.
-          l_cov_rCl <- log(networkClustering/networkRandClustering)
-          # Calculate the modularity of the random network.
-          networkRandModularity <- (1-(2/sqrt(networkNodecount)))*(2/k)^(2/3)
-          # Calculate the log ratio of the modularities.
-          l_cov_rM <- log(networkModularity/networkRandModularity)
-          # Get log ratio of characteristic path lengths.
-          l_cov_rL <- log(networkLength/networkRandLength)
-        }
-      }
-    }
-    dat <- data.frame()
-    dat[1,1] <- networkFile
-    dat[1,2] <- meanCSCI
-    dat[1,3] <- l_con_rL
-    dat[1,4] <- l_con_rCl
-    dat[1,5] <- l_con_rM
-    dat[1,6] <- l_cov_rL
-    dat[1,7] <- l_cov_rCl
-    dat[1,8] <- l_cov_rM
-    dat[1,9] <- gamma
-    networkAnalysis <- rbind(networkAnalysis,dat)
-    print(paste(networkFile,meanCSCI,l_con_rL,l_con_rCl,l_con_rM,l_cov_rL,l_cov_rCl,l_cov_rM,gamma))
+    #Get the full weighted adjacency matrix.
+    networkmatrix <- as.matrix(get.adjacency(networkgraph,attr='weight'))
+    #Get the eigenvalues of the full weighted adjacency matrix.
+    lambda_network <- eigen(networkmatrix)
+    #Get the real component first eigenvalue.
+    lambda_network_1 <- Re(lambda_network$values[1])
+    #Generate randomized version of full weighted adjacency matrix.
+    set.seed(1)
+    randnetworkmatrix <- matrix(sample(as.vector((networkmatrix))),nrow=nrow(networkmatrix),ncol=ncol(networkmatrix))
+    #Get the eigenvalues of the full weighted adjacency matrix.
+    lambda_rand <- eigen(randnetworkmatrix)
+    #Get the real component of the first eigenvalue.
+    lambda_rand_1 <- Re(lambda_rand$values[1])
+    #Calculate stability parameter.
+    gamma <- lambda_network_1/lambda_rand_1
   }
+  #Filter contravariant network data based on local similarity scores.
+  networkdataCon <- subset(networkdata,networkdata$weight<0)
+  #Generate network graph and begin calculating network parameters.
+  networkgraphCon=graph.data.frame(networkdataCon,directed=FALSE)
+  if(ecount(networkgraphCon)>0){
+    # Generate adjacency matrix of relative taxa abundance correlations
+    adj= as.network(get.adjacency(networkgraphCon,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
+    # Get the number of unique network edges
+    networkEdgecount <- network.edgecount(adj)
+    # Get the number of nodes
+    networkNodecount <- network.size(adj)
+    # Get the average degree per node.
+    k <- (2*networkEdgecount)/networkNodecount
+    # Get the random characteristic path length.
+    networkRandLength <- 0.5+((log(networkNodecount)-0.5772156649)/log(k))
+    # Get the random clustering coefficient.
+    networkRandClustering <- k/networkNodecount
+    # Get the network density.
+    networkDensity <- network.density(adj)
+    # Calculate the modularity of the network.
+    networkModularity <- modularity(cluster_edge_betweenness(networkgraphCon, weights=NULL,directed=FALSE))
+    con_M <- networkModularity
+    # Calculate the number of groups related to the modularity value.
+    networkModGroups <- length(cluster_edge_betweenness(networkgraphCon, weights=NULL,directed=FALSE))
+    # Calculate the average network path length
+    networkLength <- mean_distance(networkgraphCon,directed=FALSE)
+    con_L <- networkLength
+    # Calculate the clustering coefficient
+    networkClustering <- transitivity(networkgraphCon,type="globalundirected",isolate="zero")
+    con_Cl <- networkClustering
+    # Calcuate the log ratio of clustering coefficients.
+    l_con_rCl <- log(networkClustering/networkRandClustering)
+    # Calculate the modularity of the random network.
+    networkRandModularity <- (1-(2/sqrt(networkNodecount)))*(2/k)^(2/3)
+    # Calculate the log ratio of the modularities.
+    l_con_rM <- log(networkModularity/networkRandModularity)
+    # Get log ratio of characteristic path lengths.
+    l_con_rL <- log(networkLength/networkRandLength)
+  }
+  #Filter covariant network data based on local similarity scores.
+  networkdataCov <- subset(networkdata,networkdata$weight>0)
+  #Generate network graph and begin calculating network parameters.
+  networkgraphCov=graph.data.frame(networkdataCov,directed=FALSE)
+  if(ecount(networkgraph)>0){
+    # Generate adjacency matrix of relative taxa abundance correlations
+    adj= as.network(get.adjacency(networkgraphCov,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
+    # Get the number of unique network edges
+    networkEdgecount <- network.edgecount(adj)
+    # Get the number of nodes
+    networkNodecount <- network.size(adj)
+    # Get the average degree per node.
+    k <- (2*networkEdgecount)/networkNodecount
+    # Get the random characteristic path length.
+    networkRandLength <- 0.5+((log(networkNodecount)-0.5772156649)/log(k))
+    # Get the random clustering coefficient.
+    networkRandClustering <- k/networkNodecount
+    # Get the network density.
+    networkDensity <- network.density(adj)
+    # Calculate the modularity of the network.
+    networkModularity <- modularity(cluster_edge_betweenness(networkgraphCov, weights=NULL,directed=FALSE))
+    cov_M <- networkModularity
+    # Calculate the number of groups related to the modularity value.
+    networkModGroups <- length(cluster_edge_betweenness(networkgraphCov, weights=NULL,directed=FALSE))
+    # Calculate the average network path length
+    networkLength <- mean_distance(networkgraphCov,directed=FALSE)
+    cov_L <- networkLength
+    # Calculate the clustering coefficient
+    networkClustering <- transitivity(networkgraphCov,type="globalundirected",isolate="zero")
+    cov_Cl <- networkClustering
+    # Calcuate the log ratio of clustering coefficients.
+    l_cov_rCl <- log(networkClustering/networkRandClustering)
+    # Calculate the modularity of the random network.
+    networkRandModularity <- (1-(2/sqrt(networkNodecount)))*(2/k)^(2/3)
+    # Calculate the log ratio of the modularities.
+    l_cov_rM <- log(networkModularity/networkRandModularity)
+    # Get log ratio of characteristic path lengths.
+    l_cov_rL <- log(networkLength/networkRandLength)
+  }
+  dat <- data.frame()
+  dat[1,1] <- networkFile
+  dat[1,2] <- meanCSCI
+  dat[1,3] <- l_con_rL
+  dat[1,4] <- l_con_rCl
+  dat[1,5] <- l_con_rM
+  dat[1,6] <- l_cov_rL
+  dat[1,7] <- l_cov_rCl
+  dat[1,8] <- l_cov_rM
+  dat[1,9] <- gamma
+  dat[1,10] <- con_L
+  dat[1,11] <- con_Cl
+  dat[1,12] <- con_M
+  dat[1,13] <- cov_L
+  dat[1,14] <- cov_Cl
+  dat[1,15] <- cov_M
+  networkAnalysis <- rbind(networkAnalysis,dat)
+  print(paste(networkFile,meanCSCI,l_con_rL,l_con_rCl,l_con_rM,l_cov_rL,l_cov_rCl,l_cov_rM,gamma,con_L,con_Cl,con_M,cov_L,cov_Cl,cov_M))
 }
-colnames(networkAnalysis) <- c("filename","meanCSCI","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","gamma")
+colnames(networkAnalysis) <- c("filename","meanCSCI","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","gamma","con_L","con_Cl","con_M","cov_L","cov_Cl","cov_M")
 networkAnalysis[networkAnalysis=="-Inf"] <- NA
 networkAnalysis[networkAnalysis=="Inf"] <- NA
 
@@ -262,9 +266,9 @@ library(PerformanceAnalytics)
 library(aod)
 library(glmm)
 library(rcompanion)
-model.vars <- names(networkAnalysis)[3:9]
+model.vars <- names(networkAnalysis)[-c(1,2)]
 model.list <- lapply(model.vars, function(x){
   glm(substitute(meanCSCI ~ i, list(i=as.name(x))),data=networkAnalysis)
 })
 lapply(model.list,summary)
-nagelkerke(glm((meanCSCI~l_con_rM),data=networkAnalysis))
+lapply(model.list,nagelkerke)
