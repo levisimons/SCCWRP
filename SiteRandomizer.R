@@ -19,7 +19,7 @@ for(i in 1:siteNum){
   GISBiochemData <- subset(GISBiochemData, CSCI != "NA")
   
   #Randomly subsample the site data by individual sample location-date (UniqueID).
-  SampleSize=45
+  SampleSize=50
   subsample <- unique(GISBiochemData$UniqueID)
   subsample <- sample(subsample,SampleSize)
   
@@ -127,7 +127,7 @@ insect <-subset(GISBiochemData,GISBiochemData$MeasurementType=="Invertebrate rel
 insectID <- unique(insect$FinalID)
 chem <- subset(GISBiochemData,GISBiochemData$MeasurementType!="Algal relative abundance" & GISBiochemData$MeasurementType!="Invertebrate relative abundances" & GISBiochemData$MeasurementType!="Invertebrate relative abundance")
 chemID <- unique(chem$FinalID)
-networkfiles <- Sys.glob("N*Network.txt")
+networkfiles <- Sys.glob("N50*Network.txt")
 networkAnalysis <- data.frame()
 #Define a 'not in' function.
 '%!in%' <- function(x,y)!('%in%'(x,y))
@@ -262,8 +262,9 @@ library(PerformanceAnalytics)
 library(aod)
 library(glmm)
 library(rcompanion)
-model.vars <- names(networkAnalysis)[2:8]
+model.vars <- names(networkAnalysis)[3:9]
 model.list <- lapply(model.vars, function(x){
-  glm(substitute(gamma ~ i, list(i=as.name(x))),data=networkAnalysis)
+  glm(substitute(meanCSCI ~ i, list(i=as.name(x))),data=networkAnalysis)
 })
 lapply(model.list,summary)
+nagelkerke(glm((meanCSCI~l_con_rM),data=networkAnalysis))
