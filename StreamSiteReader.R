@@ -10,10 +10,7 @@ library(tidyr)
 
 setwd("~/Desktop/SCCWRP")
 #Read in site data containing biological counts, water chemistry, and land usage
-#values.  If this file is not yet generated then proceed with the following commands
-#to generate it in the first place.
-GISBiochemData <- read.table("GISBiochemData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
-
+#values.  Generate a merged data set.
 
 #If you need to aggregate site data please proceed here.
 #Read in algae data from SMC sites.
@@ -258,19 +255,36 @@ GISBiochemData <- filter(GISBiochemData,Measurement>=0)
 GISBiochemData <- GISBiochemData[!duplicated(GISBiochemData),]
 
 #Incorporate CSCI data.
-csciData <- read.csv("CSCI_dnaSites.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
-csciData <- filter(csciData,CSCI!="NA")
-csciData <- subset(csciData,select=-c(StationCode))
+csciData1 <- read.csv("CSCI_dnaSites.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+csciData1 <- filter(csciData1,CSCI!="NA")
+csciData1 <- subset(csciData1,select=-c(StationCode))
 #Fix date format.
-csciData$SampleDate <- mdy(csciData$SampleDate)
-#Create UniqueID column to identify samples by site, date, and protocol.
-csciData$UniqueID <- with(csciData,paste(csciData$SampleStationID,csciData$DatabaseCode,csciData$SampleDate))
-#Add in qualifier columns based on California Streams Condition Index.  The cutoff is 0.79.
-csciData$CSCIQualifier <- ifelse(csciData$CSCI >= 0.79, "Healthy","Disturbed")
-csciData$CSCIQualNum <- ifelse(csciData$CSCI >= 0.79, 1,0)
+csciData1$SampleDate <- mdy(csciData1$SampleDate)
+#Create Year column.
+csciData1$Year <- year(csciData1$SampleDate)
+#Insert Unique ID
+csciData1$UniqueID <- with(csciData1,paste(csciData1$SampleStationID,"SWAMP",csciData1$SampleDate))
+#Subset UniqueID and CSCI.
+csciData1 <- csciData1[,c("UniqueID","CSCI")]
+#Incorporate CSCI data.
+csciData2 <- read.csv("csci_scored_sites_tbl.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+csciData2 <- filter(csciData2,CSCI!="NA")
+names(csciData2)[names(csciData2)=="StationCode"]<-"SampleStationID"
+#Fix date format.
+csciData2$SampleDate <- mdy(csciData2$SAMPLEDATE)
+#Create Year column.
+csciData2$Year <- year(csciData2$SampleDate)
+#Insert Unique ID
+csciData2$UniqueID <- with(csciData2,paste(csciData2$SampleStationID,"SWAMP",csciData2$SampleDate))
+#Subset UniqueID and CSCI.
+csciData2 <- csciData2[,c("UniqueID","CSCI")]
+#Merge into a single CSCI dataframe.
+csciData <- rbind(csciData1,csciData2)
+csciData <- csciData[!duplicated(csciData),]
 
 #Merge CSCI data by UniqueID
-GISBiochemData <- join(GISBiochemData,csciData,"UniqueID")
+GISBiochemData <- join(GISBiochemData,csciData,by=c("UniqueID"))
+GISBiochemData <- GISBiochemData[!duplicated(GISBiochemData),]
 
 #Calculate land usage index based on 1K, 5K, and catchment zone values.
 #Use land usage data from 2011.
@@ -318,7 +332,6 @@ GISBiochemDataHDWS$LUCategory <- "HDWS"
 
 #Merge land usage subsets back together for later analytical tools.
 GISBiochemData <- do.call("rbind",list(GISBiochemDataLD1K,GISBiochemDataMD1K,GISBiochemDataHD1K,GISBiochemDataLD5K,GISBiochemDataMD5K,GISBiochemDataHD5K,GISBiochemDataLDWS,GISBiochemDataMDWS,GISBiochemDataHDWS))
-
 
 #Write out merged data set to read back in the future as opposed to 
 #generating it each time from component data files.
