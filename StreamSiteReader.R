@@ -12,6 +12,8 @@ setwd("~/Desktop/SCCWRP")
 #Read in site data containing biological counts, water chemistry, and land usage
 #values.  Generate a merged data set.
 
+#GISBiochemData <- read.table("GISBiochemData.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+
 #If you need to aggregate site data please proceed here.
 #Read in algae data from SMC sites.
 algaeDataSMCRaw <- read.table("AlgaeTax_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
@@ -89,6 +91,10 @@ algaeDataSWAMP$Year <- year(algaeDataSWAMP$SampleDate)
 #Create merged algae data set.
 algaeData <- do.call("rbind",list(algaeDataSMC,algaeDataSWAMP,algaeDataCEDEN))
 algaeData <- na.omit(algaeData)
+#Determine the insect Shannon diversity and make it a temporary dataframe.
+tmp <- as.data.frame(xtabs(-Measurement*log(Measurement) ~ UniqueID,algaeData))
+colnames(tmp) <- c("UniqueID","Shannon")
+algaeData <- merge(algaeData,tmp,"UniqueID")
 
 #Read in insect data from SMC sites.
 insectDataSMCRAW <- read.csv("BugTax_dnaSites_SMC.csv")
@@ -165,10 +171,28 @@ insectDataSWAMP$Year <- year(insectDataSWAMP$SampleDate)
 #Create merged insect data set.
 insectData <- do.call("rbind",list(insectDataSMC,insectDataSWAMP,insectDataCEDEN))
 insectData <- na.omit(insectData)
+insectData$UniqueTaxa <- paste(insectData$UniqueID,insectData$FinalID)
+#Determine the insect totals count column and make it a temporary dataframe.
+tmp <- as.data.frame(xtabs(BAResult ~ UniqueTaxa,insectData))
+colnames(tmp) <- c("UniqueTaxa","BAResult")
+#Add insect totals count column to insect dataframe.
+insectData <- merge(subset(insectData,select=-c(3)),tmp,"UniqueTaxa")
+#Calculate the relative abundance of insect data.
+insectData$Measurement <- with(insectData,BAResult/ActualOrganismCount)
+insectData <- insectData[!duplicated(insectData),]
+#Remove UniqueTaxa column
+insectData <- subset(insectData,select=-c(1))
+#Reorder columns prior to merger.
+insectData <- insectData[c("SampleStationID","SampleDate","BAResult","FinalID","ActualOrganismCount","Measurement","MeasurementType","UniqueID","Year")]
+#Determine the insect Shannon diversity and make it a temporary dataframe.
+tmp <- as.data.frame(xtabs(-Measurement*log(Measurement) ~ UniqueID,insectData))
+colnames(tmp) <- c("UniqueID","Shannon")
+insectData <- merge(insectData,tmp,"UniqueID")
 
 #Merge insect and algae data.
 bioData <- do.call("rbind",list(insectData,algaeData))
-bioData <- bioData[,-c(3,5)]
+#bioData <- bioData[,-c(3,5)]
+bioData <- bioData[!duplicated(bioData),]
 
 #Read in chemical data for the SMC test sites.
 chemDataSMCRAW <- read.table("Chem_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
