@@ -109,6 +109,6 @@ for(i in 1:divisionNum){
   filename = paste("LUSweepN",sampleNum,"S",spotNum,"R",repNum,"M",meanLU,sep="")
   
   #Output file for use in eLSA.
-  #write.table(eLSAInput,paste(filename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
+  write.table(eLSAInput,paste(filename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
   print(filename)
 }
