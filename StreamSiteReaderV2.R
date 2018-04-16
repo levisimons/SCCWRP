@@ -9,7 +9,7 @@ library(data.table)
 library(tidyr)
 
 setwd("~/Desktop/SCCWRP")
-#Read in site data containing biological counts, water chemistry, and land usage
+#Read in site data containing biological data and land usage
 #values.  Generate a merged data set.
 
 #GISBiochemData <- read.table("GISBiochemData.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
@@ -212,3 +212,29 @@ bioData <- do.call("rbind",list(insectData,algaeData))
 bioData <- bioData[!duplicated(bioData),]
 #Reorder columns post merger.
 bioData <- bioData[c("StationCode","SampleDate","FinalID","Measurement","MeasurementType","UniqueID","Year")]
+
+#Read in geospatial data.
+GISDataRAW <- read.table("GIS_dnaSites.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset columns of interest.  StationID, location, and land usage.
+GISData <- GISDataRAW[,c(2,6:7,94,97,100)]
+names(GISData)[names(GISData)=="New_Lat"]<-"Latitude"
+names(GISData)[names(GISData)=="New_Long"]<-"Longitude"
+
+#Merge geospatial data with biological observations.
+GISBioData <- join(bioData,GISData,by="StationCode")
+#Sort merged data set by year then measurement name.
+GISBioData <- as.data.frame(GISBioData[order(as.numeric(GISBioData$Year),as.character(GISBioData$FinalID)),])
+
+#Filter out duplicate rows.
+GISBioData <- GISBioData[!duplicated(GISBioData),]
+
+#Calculate land usage index based on 5km catchment zone values from 2011.
+GISBioData$LU_2011_5K <- with(GISBioData,Ag_2011_5K+CODE_21_2011_5K+URBAN_2011_5K)
+
+#Filter out data without a land usage index.
+GISBioData <- subset(GISBioData,LU_2011_5K!="NA")
+
+#Write out merged data set to read back in the future as opposed to 
+#generating it each time from component data files.
+write.csv(GISBioData,file="GISBioData.csv",row.names=FALSE)
+
