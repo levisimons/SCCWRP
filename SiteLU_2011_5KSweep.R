@@ -13,7 +13,7 @@ setwd("~/Desktop/SCCWRP")
 #values.  If this file is not yet generated then proceed with the following commands
 #to generate it in the first place.
 GISBioData <- read.table("GISBioData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
-#Order data by CSCI.
+#Order data by land usage at a 5km clip.
 GISBioData <- arrange(GISBioData,LU_2011_5K,UniqueID)
 
 #Get number of unique samples.
@@ -24,12 +24,14 @@ divisionNum = 5
 sampleNum <- as.integer(sitesNum/divisionNum)
 
 for(i in 1:divisionNum){
-  lowNum=(i-1)*sampleNum+1
-  highNum=i*sampleNum
   GISBioData <- read.table("GISBioData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
   GISBioData <- arrange(GISBioData,LU_2011_5K)
-  print(paste(lowNum,highNum))
-  GISBioDataSubset <- subset(GISBioData,GISBioData$UniqueID %in% unique(GISBioData$UniqueID)[lowNum:highNum])
+  if(i<divisionNum){
+    GISBioDataSubset <- subset(GISBioData,LU_2011_5K<1.5*i & LU_2011_5K>=1.5*(i-1))
+  }
+  if(i==divisionNum){
+    GISBioDataSubset <- subset(GISBioData,LU_2011_5K>=1.5*(i-1))
+  }
   #Determine the average land usage (5km buffer) per subsample of sites.
   meanLU = mean(na.omit(GISBioDataSubset$LU_2011_5K))
   #Initialize a data frame where the rows are all of the unique measurements for a given
@@ -106,9 +108,174 @@ for(i in 1:divisionNum){
   #S is the number of spots, or years represented in the subsample group.
   #R is the number of replicates per year.  Many of the years will have null replicates, but a uniform number is needed for eLSA.
   #M is the mean land usage score, at a 5km clip from 2011 data, per subsample group.
+  sampleNum <- length(unique(GISBioDataSubset$UniqueID))
   filename = paste("LUSweepN",sampleNum,"S",spotNum,"R",repNum,"M",meanLU,sep="")
   
   #Output file for use in eLSA.
   write.table(eLSAInput,paste(filename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
   print(filename)
 }
+
+#Read in eLSA output.
+#Compute network statistics of the likeliest association networks between taxa.
+library(igraph)
+library(network)
+library(stringr)
+#Read in site data.
+GISBioData <- read.table("GISBioData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+#Get unique identifiers for algal, invertebrate, and chemical measurement types.
+algae <- subset(GISBioData,GISBioData$MeasurementType=="Benthic algal relative abundance" | GISBioData$MeasurementType=="Soft-bodied algal relative abundance")
+algaeID <- unique(algae$FinalID)
+insect <-subset(GISBioData,GISBioData$MeasurementType=="Invertebrate relative abundances" | GISBioData$MeasurementType=="Invertebrate relative abundance")
+insectID <- unique(insect$FinalID)
+networkfiles <- Sys.glob("eLSALUSweep*.txt")
+networkAnalysis <- data.frame()
+#Define a 'not in' function.
+'%!in%' <- function(x,y)!('%in%'(x,y))
+for(networkFile in networkfiles){
+  print(networkFile)
+  networkdata <- read.delim(networkFile,header=TRUE, sep="\t",as.is=T,check.names=FALSE)
+  #Filter out association network data based on P scores, for the local similarity
+  #between two factors, with values less than 0.05.
+  networkdata <- filter(networkdata, P <= 0.01)
+  names(networkdata)[names(networkdata)=="LS"]<-"weight"
+  meanLU <- as.numeric(str_match(networkFile,"M(.*?).txt")[2])
+  #Generate network graph and begin calculating network parameters.
+  networkgraph=graph.data.frame(networkdata,directed=FALSE)
+  if(ecount(networkgraph)>0){
+    #Get the full weighted adjacency matrix.
+    networkmatrix <- as.matrix(get.adjacency(networkgraph,attr='weight'))
+    #Get the eigenvalues of the full weighted adjacency matrix.
+    lambda_network <- eigen(networkmatrix)
+    #Get the real component first eigenvalue.
+    lambda_network_1 <- Re(lambda_network$values[1])
+    #Generate randomized version of full weighted adjacency matrix.
+    set.seed(1)
+    randnetworkmatrix <- matrix(sample(as.vector((networkmatrix))),nrow=nrow(networkmatrix),ncol=ncol(networkmatrix))
+    #Get the eigenvalues of the full weighted adjacency matrix.
+    lambda_rand <- eigen(randnetworkmatrix)
+    #Get the real component of the first eigenvalue.
+    lambda_rand_1 <- Re(lambda_rand$values[1])
+    #Calculate stability parameter.
+    gamma <- lambda_network_1/lambda_rand_1
+    #Calculate the degree heterogeneity.
+    networkmatrix[upper.tri(networkmatrix)] <- 0
+    zeta <- mean(colSums(networkmatrix)^2)/mean(colSums(networkmatrix))^2
+  }
+  #Filter contravariant network data based on local similarity scores.
+  networkdataCon <- subset(networkdata,networkdata$weight<0)
+  #Generate network graph and begin calculating network parameters.
+  networkgraphCon=graph.data.frame(networkdataCon,directed=FALSE)
+  if(ecount(networkgraphCon)>0){
+    # Generate adjacency matrix of relative taxa abundance correlations
+    adj= as.network(get.adjacency(networkgraphCon,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
+    # Get the number of unique network edges
+    networkEdgecount <- network.edgecount(adj)
+    # Get the number of nodes
+    networkNodecount <- network.size(adj)
+    # Get the average degree per node.
+    k <- (2*networkEdgecount)/networkNodecount
+    # Get the random characteristic path length.
+    networkRandLength <- 0.5+((log(networkNodecount)-0.5772156649)/log(k))
+    # Get the random clustering coefficient.
+    networkRandClustering <- k/networkNodecount
+    # Get the network density.
+    networkDensity <- network.density(adj)
+    con_C <- networkDensity
+    # Calculate the modularity of the network.
+    networkModularity <- modularity(cluster_edge_betweenness(networkgraphCon, weights=NULL,directed=FALSE))
+    con_M <- networkModularity
+    # Calculate the number of groups related to the modularity value.
+    networkModGroups <- length(cluster_edge_betweenness(networkgraphCon, weights=NULL,directed=FALSE))
+    # Calculate the average network path length
+    networkLength <- mean_distance(networkgraphCon,directed=FALSE)
+    con_L <- networkLength
+    # Calculate the clustering coefficient
+    networkClustering <- transitivity(networkgraphCon,type="globalundirected",isolate="zero")
+    con_Cl <- networkClustering
+    # Calcuate the log ratio of clustering coefficients.
+    l_con_rCl <- log(networkClustering/networkRandClustering)
+    # Calculate the modularity of the random network.
+    networkRandModularity <- (1-(2/sqrt(networkNodecount)))*(2/k)^(2/3)
+    # Calculate the log ratio of the modularities.
+    l_con_rM <- log(networkModularity/networkRandModularity)
+    # Get log ratio of characteristic path lengths.
+    l_con_rL <- log(networkLength/networkRandLength)
+  }
+  #Filter covariant network data based on local similarity scores.
+  networkdataCov <- subset(networkdata,networkdata$weight>0)
+  #Generate network graph and begin calculating network parameters.
+  networkgraphCov=graph.data.frame(networkdataCov,directed=FALSE)
+  if(ecount(networkgraph)>0){
+    # Generate adjacency matrix of relative taxa abundance correlations
+    adj= as.network(get.adjacency(networkgraphCov,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
+    # Get the number of unique network edges
+    networkEdgecount <- network.edgecount(adj)
+    # Get the number of nodes
+    networkNodecount <- network.size(adj)
+    # Get the average degree per node.
+    k <- (2*networkEdgecount)/networkNodecount
+    # Get the random characteristic path length.
+    networkRandLength <- 0.5+((log(networkNodecount)-0.5772156649)/log(k))
+    # Get the random clustering coefficient.
+    networkRandClustering <- k/networkNodecount
+    # Get the network density.
+    networkDensity <- network.density(adj)
+    cov_C <- networkDensity
+    # Calculate the modularity of the network.
+    networkModularity <- modularity(cluster_edge_betweenness(networkgraphCov, weights=NULL,directed=FALSE))
+    cov_M <- networkModularity
+    # Calculate the number of groups related to the modularity value.
+    networkModGroups <- length(cluster_edge_betweenness(networkgraphCov, weights=NULL,directed=FALSE))
+    # Calculate the average network path length
+    networkLength <- mean_distance(networkgraphCov,directed=FALSE)
+    cov_L <- networkLength
+    # Calculate the clustering coefficient
+    networkClustering <- transitivity(networkgraphCov,type="globalundirected",isolate="zero")
+    cov_Cl <- networkClustering
+    # Calcuate the log ratio of clustering coefficients.
+    l_cov_rCl <- log(networkClustering/networkRandClustering)
+    # Calculate the modularity of the random network.
+    networkRandModularity <- (1-(2/sqrt(networkNodecount)))*(2/k)^(2/3)
+    # Calculate the log ratio of the modularities.
+    l_cov_rM <- log(networkModularity/networkRandModularity)
+    # Get log ratio of characteristic path lengths.
+    l_cov_rL <- log(networkLength/networkRandLength)
+  }
+  dat <- data.frame()
+  dat[1,1] <- networkFile
+  dat[1,2] <- meanLU
+  dat[1,3] <- l_con_rL
+  dat[1,4] <- l_con_rCl
+  dat[1,5] <- l_con_rM
+  dat[1,6] <- l_cov_rL
+  dat[1,7] <- l_cov_rCl
+  dat[1,8] <- l_cov_rM
+  dat[1,9] <- gamma
+  dat[1,10] <- con_L
+  dat[1,11] <- con_Cl
+  dat[1,12] <- con_M
+  dat[1,13] <- cov_L
+  dat[1,14] <- cov_Cl
+  dat[1,15] <- cov_M
+  dat[1,16] <- zeta
+  dat[1,17] <- con_C
+  dat[1,18] <- cov_C
+  networkAnalysis <- rbind(networkAnalysis,dat)
+  print(paste(networkFile,meanLU,l_con_rL,l_con_rCl,l_con_rM,l_cov_rL,l_cov_rCl,l_cov_rM,gamma,con_L,con_Cl,con_M,cov_L,cov_Cl,cov_M,zeta,con_C,cov_C))
+}
+colnames(networkAnalysis) <- c("filename","meanLU","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","gamma","con_L","con_Cl","con_M","cov_L","cov_Cl","cov_M","zeta","con_C","cov_C")
+networkAnalysis[networkAnalysis=="-Inf"] <- NA
+networkAnalysis[networkAnalysis=="Inf"] <- NA
+networkAnalysis <- arrange(networkAnalysis,meanLU)
+
+#Logistic regression between network parameters
+library(PerformanceAnalytics)
+library(aod)
+library(glmm)
+library(rcompanion)
+model.vars <- names(networkAnalysis)[(3:18)]
+model.list <- lapply(model.vars, function(x){
+  summary(glm(substitute(meanLU ~ i, list(i=as.name(x))),data=networkAnalysis))$coefficients[,c(1,4)]
+})
+model.list
