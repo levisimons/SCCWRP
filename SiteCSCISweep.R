@@ -9,36 +9,35 @@ library(data.table)
 library(tidyr)
 
 setwd("~/Desktop/SCCWRP")
-#Read in site data containing biological counts, water chemistry, and land usage
+#Read in site data containing biological and land usage
 #values.  If this file is not yet generated then proceed with the following commands
 #to generate it in the first place.
-GISBiochemData <- read.table("GISBiochemData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
-#Ensure that all sites have a CSCI value.
-GISBiochemData <- subset(GISBiochemData, CSCI != "NA")
-#Order data by CSCI.
-GISBiochemData <- arrange(GISBiochemData,CSCI)
+GISBioData <- read.table("GISBioData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
 
-#Get number of unique CSCI values.
-sitesNum <- length(unique(GISBiochemData$CSCI))
+#Get number of unique samples.
+sitesNum <- length(unique(GISBioData$UniqueID))
 #Enter number of divisions for subsampling.
-divisionNum = 5
-#Obtain subsampling number.
-sampleNum <- as.integer(sitesNum/divisionNum)
+divisionNum = 3
+#Enter the percent land coverage band size.
+divisionSize = 5
 
 for(i in 1:divisionNum){
-  lowNum=(i-1)*sampleNum+1
-  highNum=i*sampleNum
-  GISBiochemData <- read.table("GISBiochemData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
-  GISBiochemData <- subset(GISBiochemData, CSCI != "NA")
-  GISBiochemData <- arrange(GISBiochemData,CSCI)
-  #print(paste(lowNum,unique(GISBiochemData$CSCI)[lowNum],highNum,unique(GISBiochemData$CSCI)[highNum]))
-  GISBiochemDataSubset <- subset(GISBiochemData, CSCI >= unique(GISBiochemData$CSCI)[lowNum] & CSCI <= unique(GISBiochemData$CSCI)[highNum])
-  #Determine the average CSCI per subsample of sites.
-  meanCSCI = mean(na.omit(GISBiochemDataSubset$CSCI))
+  GISBioData <- read.table("GISBioData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+  if(i==1){
+    GISBioDataSubset <- subset(GISBioData,LU_2011_5K<divisionSize*i)
+  }
+  if(i==2){
+    GISBioDataSubset <- subset(GISBioData,LU_2011_5K<3*divisionSize*i & LU_2011_5K>=divisionSize*i)
+  }
+  if(i==divisionNum){
+    GISBioDataSubset <- subset(GISBioData,LU_2011_5K>=3*divisionSize*i)
+  }
+  #Determine the average land usage (5km buffer) per subsample of sites.
+  meanLU = mean(na.omit(GISBioDataSubset$LU_2011_5K))
   #Initialize a data frame where the rows are all of the unique measurements for a given
   #subset of the data.
   #Order the data frame by measurement name.
-  selected <- arrange(GISBiochemDataSubset,Year,UniqueID)
+  selected <- arrange(GISBioDataSubset,Year,UniqueID)
   eLSAInput <- as.data.frame(unique(selected$FinalID))
   colnames(eLSAInput)<-c("FinalID")
   eLSAInput <- as.data.frame(eLSAInput[order(as.character(eLSAInput$FinalID)),])
@@ -50,7 +49,7 @@ for(i in 1:divisionNum){
   for(ID in unique(selected$UniqueID)){
     tmp <- filter(selected, UniqueID == ID)[,c("FinalID","Measurement","UniqueID")]
     tmp <- as.data.frame(tmp[order(tmp$FinalID),])
-    tmp <- tmp[-c(3)]
+    tmp <- tmp[-c(3)] #Remove UniqueID from temporary dataframe.
     colnames(tmp)<-c("FinalID",paste("Measurement",ID,sep=" "))
     eLSAInput <- join(eLSAInput,tmp,by="FinalID")
     eLSAInput$FinalID=as.character(eLSAInput$FinalID)
@@ -108,8 +107,9 @@ for(i in 1:divisionNum){
   #N is the number of samples in the subsample group.
   #S is the number of spots, or years represented in the subsample group.
   #R is the number of replicates per year.  Many of the years will have null replicates, but a uniform number is needed for eLSA.
-  #M is the mean CSCI score per subsample group.
-  filename = paste("CSCISweepN",sampleNum,"S",spotNum,"R",repNum,"M",meanCSCI,sep="")
+  #M is the mean land usage score, at a 5km clip from 2011 data, per subsample group.
+  sampleNum <- length(unique(GISBioDataSubset$UniqueID))
+  filename = paste("LUSweep3BandsN",sampleNum,"S",spotNum,"R",repNum,"M",meanLU,sep="")
   
   #Output file for use in eLSA.
   write.table(eLSAInput,paste(filename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
@@ -122,30 +122,25 @@ library(igraph)
 library(network)
 library(stringr)
 #Read in site data.
-GISBiochemData <- read.table("GISBiochemData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
-#Ensure that all sites have a CSCI value.
-GISBiochemData <- subset(GISBiochemData, CSCI != "NA")
+GISBioData <- read.table("GISBioData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
 #Get unique identifiers for algal, invertebrate, and chemical measurement types.
-algae <- subset(GISBiochemData,GISBiochemData$MeasurementType=="Algal relative abundance")
+algae <- subset(GISBioData,GISBioData$MeasurementType=="Benthic algal relative abundance" | GISBioData$MeasurementType=="Soft-bodied algal relative abundance")
 algaeID <- unique(algae$FinalID)
-insect <-subset(GISBiochemData,GISBiochemData$MeasurementType=="Invertebrate relative abundances" | GISBiochemData$MeasurementType=="Invertebrate relative abundance")
+insect <-subset(GISBioData,GISBioData$MeasurementType=="Invertebrate relative abundances" | GISBioData$MeasurementType=="Invertebrate relative abundance")
 insectID <- unique(insect$FinalID)
-chem <- subset(GISBiochemData,GISBiochemData$MeasurementType!="Algal relative abundance" & GISBiochemData$MeasurementType!="Invertebrate relative abundances" & GISBiochemData$MeasurementType!="Invertebrate relative abundance")
-chemID <- unique(chem$FinalID)
-networkfiles <- Sys.glob("CSCISweepN50*Network.txt")
+networkfiles <- Sys.glob("eLSALUSweep3BandsN*.txt")
 networkAnalysis <- data.frame()
 #Define a 'not in' function.
 '%!in%' <- function(x,y)!('%in%'(x,y))
 for(networkFile in networkfiles){
+  print(networkFile)
   networkdata <- read.delim(networkFile,header=TRUE, sep="\t",as.is=T,check.names=FALSE)
-  #Filter out association network data based on P scores, for the local similarity
-  #between two factors, with values less than 0.05.
+  #Filter out association network data based on P and Q scores, for the local similarity
+  #between two factors, with values less than 0.01.
   networkdata <- filter(networkdata, P <= 0.01)
+  networkdata <- filter(networkdata, Q <= 0.01)
   names(networkdata)[names(networkdata)=="LS"]<-"weight"
-  meanCSCI <- as.numeric(str_match(networkFile,"M(.*?)Network")[2])
-  #Remove some subset of chemical and biological factors as nodes from the network.
-  networkdata <- subset(networkdata,networkdata$X %!in% chemID)
-  networkdata <- subset(networkdata,networkdata$Y %!in% chemID)
+  meanLU <- as.numeric(str_match(networkFile,"M(.*?).txt")[2])
   #Generate network graph and begin calculating network parameters.
   networkgraph=graph.data.frame(networkdata,directed=FALSE)
   if(ecount(networkgraph)>0){
@@ -164,9 +159,14 @@ for(networkFile in networkfiles){
     lambda_rand_1 <- Re(lambda_rand$values[1])
     #Calculate stability parameter.
     gamma <- lambda_network_1/lambda_rand_1
-    #Calculate the degree heterogeneity.
+    #Calculate the degree heterogeneity of the adjacency matrix.
+    networkmatrix <- as.matrix(get.adjacency(networkgraph,attr='weight'))
     networkmatrix[upper.tri(networkmatrix)] <- 0
+    networkmatrix[which(networkmatrix != 0)] <- 1
     zeta <- mean(colSums(networkmatrix)^2)/mean(colSums(networkmatrix))^2
+    #Calculate whole network modularity.
+    M <- modularity(cluster_edge_betweenness(networkgraph, weights=NULL,directed=FALSE))
+    print(paste(mean(colSums(networkmatrix)^2),mean(colSums(networkmatrix))^2,zeta))
   }
   #Filter contravariant network data based on local similarity scores.
   networkdataCon <- subset(networkdata,networkdata$weight<0)
@@ -187,6 +187,7 @@ for(networkFile in networkfiles){
     networkRandClustering <- k/networkNodecount
     # Get the network density.
     networkDensity <- network.density(adj)
+    con_C <- networkDensity
     # Calculate the modularity of the network.
     networkModularity <- modularity(cluster_edge_betweenness(networkgraphCon, weights=NULL,directed=FALSE))
     con_M <- networkModularity
@@ -226,6 +227,7 @@ for(networkFile in networkfiles){
     networkRandClustering <- k/networkNodecount
     # Get the network density.
     networkDensity <- network.density(adj)
+    cov_C <- networkDensity
     # Calculate the modularity of the network.
     networkModularity <- modularity(cluster_edge_betweenness(networkgraphCov, weights=NULL,directed=FALSE))
     cov_M <- networkModularity
@@ -248,7 +250,7 @@ for(networkFile in networkfiles){
   }
   dat <- data.frame()
   dat[1,1] <- networkFile
-  dat[1,2] <- meanCSCI
+  dat[1,2] <- meanLU
   dat[1,3] <- l_con_rL
   dat[1,4] <- l_con_rCl
   dat[1,5] <- l_con_rM
@@ -263,21 +265,24 @@ for(networkFile in networkfiles){
   dat[1,14] <- cov_Cl
   dat[1,15] <- cov_M
   dat[1,16] <- zeta
+  dat[1,17] <- con_C
+  dat[1,18] <- cov_C
+  dat[1,19] <- M
   networkAnalysis <- rbind(networkAnalysis,dat)
-  print(paste(networkFile,meanCSCI,l_con_rL,l_con_rCl,l_con_rM,l_cov_rL,l_cov_rCl,l_cov_rM,gamma,con_L,con_Cl,con_M,cov_L,cov_Cl,cov_M,zeta))
+  print(paste(networkFile,meanLU,l_con_rL,l_con_rCl,l_con_rM,l_cov_rL,l_cov_rCl,l_cov_rM,gamma,con_L,con_Cl,con_M,cov_L,cov_Cl,cov_M,zeta,con_C,cov_C,M))
 }
-colnames(networkAnalysis) <- c("filename","meanCSCI","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","gamma","con_L","con_Cl","con_M","cov_L","cov_Cl","cov_M","zeta")
+colnames(networkAnalysis) <- c("filename","meanLU","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","gamma","con_L","con_Cl","con_M","cov_L","cov_Cl","cov_M","zeta","con_C","cov_C","M")
 networkAnalysis[networkAnalysis=="-Inf"] <- NA
 networkAnalysis[networkAnalysis=="Inf"] <- NA
-networkAnalysis <- arrange(networkAnalysis,meanCSCI)
+networkAnalysis <- arrange(networkAnalysis,meanLU)
 
-#Logistic regression between network parameters and CSCI
+#Logistic regression between network parameters
 library(PerformanceAnalytics)
 library(aod)
 library(glmm)
 library(rcompanion)
-model.vars <- names(networkAnalysis)[(3:16)]
+model.vars <- names(networkAnalysis)[c(3:19)]
 model.list <- lapply(model.vars, function(x){
-  summary(glm(substitute(meanCSCI ~ i, list(i=as.name(x))),data=networkAnalysis))$coefficients[,c(1,4)]
+  summary(glm(substitute(meanLU ~ i, list(i=as.name(x))),data=networkAnalysis))$coefficients[,c(1:4)]
 })
 model.list
