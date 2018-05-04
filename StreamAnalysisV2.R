@@ -10,74 +10,275 @@ library(tidyr)
 
 setwd("~/Desktop/SCCWRP")
 #Read in site data containing biological counts, water chemistry, and land usage
-#values.  If this file is not yet generated then proceed with the following commands
-#to generate it in the first place.
-GISBiochemData <- read.table("GISBiochemData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
-#Filter the data set so only the parameter of interest remains.
-parameter="Nitrogen, Total"
-GISBiochemData <- filter(GISBiochemData,FinalID==parameter)
+#values.  Generate a merged data set.
 
-#Make a temporary data frame to aggregate the average measurement per site if
-#there are duplicated sites with data taken concurrently.
-tmp <- aggregate(GISBiochemData$Measurement,list(GISBiochemData$UniqueID), mean)
-colnames(tmp) <- c("UniqueID","Measurement")
+#GISBiochemData <- read.table("GISBiochemData.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
 
-#Remove duplicate site rows.
-GISBiochemData <- GISBiochemData[!duplicated(GISBiochemData$UniqueID),]
+#If you need to aggregate site data please proceed here.
+#Read in algae data from SMC sites.
+algaeDataSMCRaw <- read.table("AlgaeTax_dnaSites_SMC.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset only replicate 1
+algaeDataSMC <- filter(algaeDataSMCRaw, Replicate==1)
+#Subset columns of interest for the SMC sites.
+algaeDataSMC <- algaeDataSMCRaw[,c(2,3,43,44,40)]
+#Determine the algal totals count column and make it a temporary dataframe.
+tmp1 <- as.data.frame(xtabs(BAResult ~ StationCode,algaeDataSMC))
+colnames(tmp1) <- c("StationCode","ActualOrganismCount")
+#Determine the algal volumes column and make it a temporary dataframe.
+tmp2 <- as.data.frame(xtabs(Result ~ StationCode,algaeDataSMC))
+colnames(tmp2) <- c("StationCode","ActualOrganismVolume")
+#Add algal totals count column to algae dataframe.
+algaeDataSMC <- merge(algaeDataSMC,tmp1,"StationCode")
+algaeDataSMC <- merge(algaeDataSMC,tmp2,"StationCode")
+#Temporarily split data frame into soft-bodied and benthic algae sets.
+#Determine each algal sets relative abundances and then merge data frames back.
+tmp1 <- filter(algaeDataSMC,BAResult!="NA")
+#Calculate the relative abundance of benthic algae data.
+tmp1$Measurement <- with(tmp1,BAResult/ActualOrganismCount)
+#Add organism type for later use in merged data sets.
+tmp1$MeasurementType <- with(tmp1,"Benthic algal relative abundance")
+tmp2 <- filter(algaeDataSMC, Result!="NA")
+#Calculate the relative abundance of soft-bodied algae data.
+tmp2$Measurement <- with(tmp2,Result/ActualOrganismVolume)
+#Add organism type for later use in merged data sets.
+tmp2$MeasurementType <- with(tmp2,"Soft-bodied algal relative abundance")
+algaeDataSMC <- rbind(tmp1,tmp2)
+#Force a uniform date format
+algaeDataSMC$SampleDate <- mdy(algaeDataSMC$SampleDate)
+#Create unique ID combining the sample station ID and sampling date.
+algaeDataSMC$UniqueID <- with(algaeDataSMC,paste(algaeDataSMC$StationCode,"SMC",algaeDataSMC$SampleDate))
+#Find sampling year.
+algaeDataSMC$Year <- year(algaeDataSMC$SampleDate)
 
-#Remove the original measurement column.
-GISBiochemData <- subset(GISBiochemData,select=-c(Measurement))
+#Read in algae data from CEDEN sites.
+algaeDataCEDENRaw <- read.table("AlgaeTax_dnaSites_CEDEN.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset only replicate 1
+algaeDataCEDEN <- filter(algaeDataCEDENRaw, CollectionReplicate==1)
+#Subset columns of interest for the CEDEN sites.
+algaeDataCEDEN <- algaeDataCEDENRaw[,c(6,11,36,35,26)]
+names(algaeDataCEDEN)[names(algaeDataCEDEN)=="Counts"]<-"Result"
+#Determine the algal totals count column and make it a temporary dataframe.
+tmp1 <- as.data.frame(xtabs(BAResult ~ StationCode,algaeDataCEDEN))
+colnames(tmp1) <- c("StationCode","ActualOrganismCount")
+#Determine the algal volumes column and make it a temporary dataframe.
+tmp2 <- as.data.frame(xtabs(Result ~ StationCode,algaeDataCEDEN))
+colnames(tmp2) <- c("StationCode","ActualOrganismVolume")
+#Add algal totals count column to algae dataframe.
+algaeDataCEDEN <- merge(algaeDataCEDEN,tmp1,"StationCode")
+algaeDataCEDEN <- merge(algaeDataCEDEN,tmp2,"StationCode")
+#Temporarily split data frame into soft-bodied and benthic algae sets.
+#Determine each algal sets relative abundances and then merge data frames back.
+tmp1 <- filter(algaeDataCEDEN,BAResult!="NA")
+#Calculate the relative abundance of benthic algae data.
+tmp1$Measurement <- with(tmp1,BAResult/ActualOrganismCount)
+#Add organism type for later use in merged data sets.
+tmp1$MeasurementType <- with(tmp1,"Benthic algal relative abundance")
+tmp2 <- filter(algaeDataCEDEN, Result!="NA")
+#Calculate the relative abundance of soft-bodied algae data.
+tmp2$Measurement <- with(tmp2,Result/ActualOrganismVolume)
+#Add organism type for later use in merged data sets.
+tmp2$MeasurementType <- with(tmp2,"Soft-bodied algal relative abundance")
+algaeDataCEDEN <- rbind(tmp1,tmp2)
+#Force a uniform date format
+algaeDataCEDEN$SampleDate <- ymd(algaeDataCEDEN$SampleDate)
+#Create unique ID combining the sample station ID and sampling date.
+algaeDataCEDEN$UniqueID <- with(algaeDataCEDEN,paste(algaeDataCEDEN$StationCode,"CEDEN",algaeDataCEDEN$SampleDate))
+#Find sampling year.
+algaeDataCEDEN$Year <- year(algaeDataCEDEN$SampleDate)
 
-#Merge back in the averaged measurements column.
-GISBiochemData <- merge(GISBiochemData,tmp,by=("UniqueID"))
+#The SWAMP data file is in a somewhat irregular format and this is accounted for
+#when being read in.
+algaeDataSWAMPRaw <- read.table("AlgaeTaxonomy_dnaSamples_SWAMP.csv", fill=TRUE,header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset only replicate 1
+algaeDataSWAMP <- filter(algaeDataSWAMPRaw, Replicate==1)
+algaeDataSWAMP <- algaeDataSWAMPRaw[,c(6,8,97,99,90)]
+#Determine the algal totals count column and make it a temporary dataframe.
+tmp1 <- as.data.frame(xtabs(BAResult ~ StationCode,algaeDataSWAMP))
+colnames(tmp1) <- c("StationCode","ActualOrganismCount")
+#Determine the algal volumes column and make it a temporary dataframe.
+tmp2 <- as.data.frame(xtabs(Result ~ StationCode,algaeDataSWAMP))
+colnames(tmp2) <- c("StationCode","ActualOrganismVolume")
+#Add algal totals count column to algae dataframe.
+algaeDataSWAMP <- merge(algaeDataSWAMP,tmp1,"StationCode")
+algaeDataSWAMP <- merge(algaeDataSWAMP,tmp2,"StationCode")
+#Temporarily split data frame into soft-bodied and benthic algae sets.
+#Determine each algal sets relative abundances and then merge data frames back.
+tmp1 <- filter(algaeDataSWAMP,BAResult!="NA")
+#Calculate the relative abundance of benthic algae data.
+tmp1$Measurement <- with(tmp1,BAResult/ActualOrganismCount)
+#Add organism type for later use in merged data sets.
+tmp1$MeasurementType <- with(tmp1,"Benthic algal relative abundance")
+tmp2 <- filter(algaeDataSWAMP, Result!="NA")
+#Calculate the relative abundance of soft-bodied algae data.
+tmp2$Measurement <- with(tmp2,Result/ActualOrganismVolume)
+#Add organism type for later use in merged data sets.
+tmp2$MeasurementType <- with(tmp2,"Soft-bodied algal relative abundance")
+algaeDataSWAMP <- rbind(tmp1,tmp2)
+#Force a uniform date format
+algaeDataSWAMP$SampleDate <- mdy(algaeDataSWAMP$SampleDate)
+#Create unique ID combining the sample station ID and sampling date.
+algaeDataSWAMP$UniqueID <- with(algaeDataSWAMP,paste(algaeDataSWAMP$StationCode,"SWAMP",algaeDataSWAMP$SampleDate))
+#Find sampling year.
+algaeDataSWAMP$Year <- year(algaeDataSWAMP$SampleDate)
 
-#Read in California Stream Condition Index data
-csciData <- read.csv("csci_scored_sites_tbl.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
-csciData <- filter(csciData,CSCI!="NA")
-names(csciData)[names(csciData)=="StationCode"]<-"SampleStationID"
-names(csciData)[names(csciData)=="SAMPLEDATE"]<-"SampleDate"
-#Make the date format uniform.
-csciData$SampleDate <- as.Date(csciData$SampleDate,format="%m/%d/%y")
-#Add in qualifier columns based on California Streams Condition Index.  The cutoff is 0.79.
-csciData$CSCIQualifier <- ifelse(csciData$CSCI >= 0.79, "Healthy","Disturbed")
-csciData$CSCIQualNum <- ifelse(csciData$CSCI >= 0.79, 1,0)
-#Add in qualifier column based on total nitrogen concentrations.  The cutoff is 0.42mg/L.
-#csciData$TNQualifier <- ifelse(csciData$`Total_Nitrogen (mg/L)`<=0.42,"Healthy","Disturbed")
-#Add in qualifier column based on total phosphate concentrations.  The cutoff is 0.03mg/L.
-#csciData$TPQualifier <- ifelse(csciData$`Total_Phosphorous (mg/L)`<=0.03,"Healthy","Disturbed")
-#Parse out the year the CSCI was calculated by site.
-csciData$Year <- year(csciData$SampleDate)
-#Keep only the first replicate.  Most sites only have one replicate.
-csciData <- filter(csciData,REPLICATE==1)
-#Filter by year so that only CSCI values are found within the same time window
-#as the merged site data set.
-csciData <- filter(csciData,Year>=min(GISBiochemData$Year) & Year<= max(GISBiochemData$Year))
+#Create merged algae data set.
+algaeData <- do.call("rbind",list(algaeDataSMC,algaeDataSWAMP,algaeDataCEDEN))
+#Remove raw count data.
+algaeData <- within(algaeData,rm("BAResult","Result","ActualOrganismCount","ActualOrganismVolume"))
+#Reorder columns prior to merger.
+algaeData <- algaeData[c("StationCode","SampleDate","FinalID","Measurement","MeasurementType","UniqueID","Year")]
 
-#Merge CSCI data onto site data.
-GISBiochemData <- merge(GISBiochemData,csciData,by=c("SampleStationID"))
+#Read in insect data from SMC sites.
+insectDataSMCRAW <- read.csv("BugTax_dnaSites_SMC.csv")
+#Subset only replicate 1
+insectDataSMC <- filter(insectDataSMCRAW, FieldReplicate==1)
+#Subset columns of interest.
+insectDataSMC <- insectDataSMC[,c("StationCode","SampleDate","FinalID","BAResult")]
+tmp<-data.table(insectDataSMC)
+#Sum insect counts for matching IDs, but with different life stages.
+insectDataSMC<-tmp[,.(BAResult=sum(BAResult)),by=.(StationCode,SampleDate,FinalID)]
+#Determine the insect totals count column by StationCode and SampleDate and make it a temporary dataframe.
+tmp<-data.table(insectDataSMC)
+tmp<-tmp[,.(BAResult=sum(BAResult)),by=.(StationCode,SampleDate)]
+colnames(tmp) <- c("StationCode","SampleDate","ActualOrganismCount")
+#Merge in the total insect count column.
+insectDataSMC<-join(insectDataSMC,tmp,by=c("StationCode","SampleDate"))
+#Calculate the relative abundance of insect data.
+insectDataSMC$Measurement <- with(insectDataSMC,BAResult/ActualOrganismCount)
+#Add organism type for later use in merged data sets.
+insectDataSMC$MeasurementType <- with(insectDataSMC,"Invertebrate relative abundances")
+#Force a uniform date format
+insectDataSMC$SampleDate <- mdy(insectDataSMC$SampleDate)
+#Create unique ID combining the sample station ID and sampling date.
+insectDataSMC$UniqueID <- with(insectDataSMC,paste(insectDataSMC$StationCode,"SMC",insectDataSMC$SampleDate))
+#Find sampling year.
+insectDataSMC$Year <- year(insectDataSMC$SampleDate)
 
-#Read in network statistics generated under different chemical parameter selection windows.
-chemNetworks <- read.csv("SCCWRPNetworkAnalysisChemicalThresholdsSummary.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Read in insect data from CEDEN sites.
+insectDataCEDENRAW <- read.table("BugTax_dnaSites_CEDEN.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset only replicate 1
+insectDataCEDEN <- filter(insectDataCEDENRAW, CollectionReplicate==1)
+#Subset columns of interest.
+insectDataCEDEN <- insectDataCEDENRAW[,c("StationCode","SampleDate","FinalID","BAResult")]
+tmp<-data.table(insectDataCEDEN)
+#Sum insect counts for matching IDs, but with different life stages.
+insectDataCEDEN<-tmp[,.(BAResult=sum(BAResult)),by=.(StationCode,SampleDate,FinalID)]
+#Determine the insect totals count column by StationCode and SampleDate and make it a temporary dataframe.
+tmp<-data.table(insectDataCEDEN)
+tmp<-tmp[,.(BAResult=sum(BAResult)),by=.(StationCode,SampleDate)]
+colnames(tmp) <- c("StationCode","SampleDate","ActualOrganismCount")
+#Merge in the total insect count column.
+insectDataCEDEN<-join(insectDataCEDEN,tmp,by=c("StationCode","SampleDate"))
+#Calculate the relative abundance of insect data.
+insectDataCEDEN$Measurement <- with(insectDataCEDEN,BAResult/ActualOrganismCount)
+#Add organism type for later use in merged data sets.
+insectDataCEDEN$MeasurementType <- with(insectDataCEDEN,"Invertebrate relative abundance")
+#Force a uniform date format
+insectDataCEDEN$SampleDate <- ymd(insectDataCEDEN$SampleDate)
+#Create unique ID combining the sample station ID and sampling date.
+insectDataCEDEN$UniqueID <- with(insectDataCEDEN,paste(insectDataCEDEN$StationCode,"CEDEN",insectDataCEDEN$SampleDate))
+#Find sampling year.
+insectDataCEDEN$Year <- year(insectDataCEDEN$SampleDate)
 
-#Assign network parameters based on a particular parameter concentration.
-threshold=0.42
-GISBiochemData$Con_l_rL <-ifelse(GISBiochemData$Measurement>threshold,chemNetworks[chemNetworks$Prefix=='HTN','Con_l_rL'],chemNetworks[chemNetworks$Prefix=='LTN','Con_l_rL'])  
-GISBiochemData$Con_l_rCl <-ifelse(GISBiochemData$Measurement>threshold,chemNetworks[chemNetworks$Prefix=='HTN','Con_l_rCl'],chemNetworks[chemNetworks$Prefix=='LTN','Con_l_rCl'])
-GISBiochemData$Con_l_rM <-ifelse(GISBiochemData$Measurement>threshold,chemNetworks[chemNetworks$Prefix=='HTN','Con_l_rM'],chemNetworks[chemNetworks$Prefix=='LTN','Con_l_rM'])  
-GISBiochemData$Cov_l_rL <-ifelse(GISBiochemData$Measurement>threshold,chemNetworks[chemNetworks$Prefix=='HTN','Cov_l_rL'],chemNetworks[chemNetworks$Prefix=='LTN','Cov_l_rL'])  
-GISBiochemData$Cov_l_rCl <-ifelse(GISBiochemData$Measurement>threshold,chemNetworks[chemNetworks$Prefix=='HTN','Cov_l_rCl'],chemNetworks[chemNetworks$Prefix=='LTN','Cov_l_rCl'])  
-GISBiochemData$Cov_l_rM <-ifelse(GISBiochemData$Measurement>threshold,chemNetworks[chemNetworks$Prefix=='HTN','Cov_l_rM'],chemNetworks[chemNetworks$Prefix=='LTN','Cov_l_rM'])  
+#Read in insect data from SWAMP sites.
+insectDataSWAMPRAW <- read.table("BugTaxonomy_dnaSamples_SWAMP.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+#Subset only replicate 1
+insectDataSWAMP <- filter(insectDataSWAMPRAW, Replicate==1)
+#Subset columns of interest.
+insectDataSWAMP <- insectDataSWAMPRAW[,c("StationCode","SampleDate","FinalID","BAResult")]
+#Sum insect counts for matching IDs, but with different life stages.
+tmp<-data.table(insectDataSWAMP)
+#Sum insect counts for matching IDs, but with different life stages.
+insectDataSWAMP<-tmp[,.(BAResult=sum(BAResult)),by=.(StationCode,SampleDate,FinalID)]
+#Determine the insect totals count column by StationCode and SampleDate and make it a temporary dataframe.
+tmp<-data.table(insectDataSWAMP)
+tmp<-tmp[,.(BAResult=sum(BAResult)),by=.(StationCode,SampleDate)]
+colnames(tmp) <- c("StationCode","SampleDate","ActualOrganismCount")
+#Merge in the total insect count column.
+insectDataSWAMP<-join(insectDataSWAMP,tmp,by=c("StationCode","SampleDate"))
+#Calculate the relative abundance of insect data.
+insectDataSWAMP$Measurement <- with(insectDataSWAMP,BAResult/ActualOrganismCount)
+#Add organism type for later use in merged data sets.
+insectDataSWAMP$MeasurementType <- with(insectDataSWAMP,"Invertebrate relative abundance")
+insectDataSWAMP <- subset(insectDataSWAMP,insectDataSWAMP$BAResult!='NA')
+#Force a uniform date format
+insectDataSWAMP$SampleDate <- mdy(insectDataSWAMP$SampleDate)
+#Create unique ID combining the sample station ID and sampling date.
+insectDataSWAMP$UniqueID <- with(insectDataSWAMP,paste(insectDataSWAMP$StationCode,"SWAMP",insectDataSWAMP$SampleDate))
+#Find sampling year.
+insectDataSWAMP$Year <- year(insectDataSWAMP$SampleDate)
 
-testData <- select(GISBiochemData,CSCIQualNum,Con_l_rL,Con_l_rCl,Con_l_rM,Cov_l_rL,Cov_l_rCl,Cov_l_rM)
-testData <- na.omit(testData)
+#Create merged insect data set.
+insectData <- do.call("rbind",list(insectDataSMC,insectDataSWAMP,insectDataCEDEN))
+#Remove raw count data.
+insectData <- within(insectData,rm("BAResult","ActualOrganismCount"))
+#Reorder columns prior to merger.
+insectData <- insectData[,c("StationCode","SampleDate","FinalID","Measurement","MeasurementType","UniqueID","Year")]
 
-#Logistic regression between network parameters and CSCI
-library(PerformanceAnalytics)
-library(aod)
-library(glmm)
-library(rcompanion)
-model.vars <- names(testData)[2:7]
-model.list <- lapply(model.vars, function(x){
-  glm(substitute(CSCIQualNum ~ i, list(i=as.name(x))),data=testData,family=binomial(link="logit"))
-})
-lapply(model.list,predict)
+#Merge insect and algae data.
+bioData <- do.call("rbind",list(insectData,algaeData))
+bioData <- bioData[!duplicated(bioData),]
+#Reorder columns post merger.
+bioData <- bioData[,c("StationCode","SampleDate","FinalID","Measurement","MeasurementType","UniqueID","Year")]
+
+#Read in geospatial data.
+GISDataRAW <- read.table("GIS_dnaSites.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+#Subset columns of interest.  StationID, location, and land usage.
+GISData <- GISDataRAW[,c(2,6:7,94,97,100)]
+names(GISData)[names(GISData)=="New_Lat"]<-"Latitude"
+names(GISData)[names(GISData)=="New_Long"]<-"Longitude"
+
+#Merge geospatial data with biological observations.
+GISBioData <- join(bioData,GISData,by="StationCode")
+#Sort merged data set by year then measurement name.
+GISBioData <- as.data.frame(GISBioData[order(as.numeric(GISBioData$Year),as.character(GISBioData$FinalID)),])
+
+#Filter out duplicate rows.
+GISBioData <- GISBioData[!duplicated(GISBioData),]
+
+#Calculate land usage index based on 5km catchment zone values from 2011.
+GISBioData$LU_2011_5K <- with(GISBioData,Ag_2011_5K+CODE_21_2011_5K+URBAN_2011_5K)
+
+#Incorporate CSCI data.
+csciData1 <- read.csv("CSCI_dnaSites.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+csciData1 <- filter(csciData1,CSCI!="NA")
+#csciData1 <- subset(csciData1,select=-c(StationCode))
+#Fix date format.
+csciData1$SampleDate <- mdy(csciData1$SampleDate)
+#Create Year column.
+csciData1$Year <- year(csciData1$SampleDate)
+#Insert Unique ID
+csciData1$UniqueID <- with(csciData1,paste(csciData1$StationCode,"SWAMP",csciData1$SampleDate))
+#Subset UniqueID and CSCI.
+csciData1 <- csciData1[,c("UniqueID","StationCode","SampleDate","CSCI")]
+#Incorporate CSCI data.
+csciData2 <- read.csv("csci_scored_sites_tbl.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+csciData2 <- filter(csciData2,CSCI!="NA")
+#names(csciData2)[names(csciData2)=="StationCode"]<-"SampleStationID"
+#Fix date format.
+csciData2$SampleDate <- mdy(csciData2$SAMPLEDATE)
+#Create Year column.
+csciData2$Year <- year(csciData2$SampleDate)
+#Insert Unique ID
+csciData2$UniqueID <- with(csciData2,paste(csciData2$StationCode,"SWAMP",csciData2$SampleDate))
+#Subset UniqueID and CSCI.
+csciData2 <- csciData2[,c("UniqueID","StationCode","SampleDate","CSCI")]
+#Merge into a single CSCI dataframe.
+csciData <- rbind(csciData1,csciData2)
+csciData <- csciData[,c("StationCode","SampleDate","CSCI")]
+csciData <- csciData[!duplicated(csciData),]
+
+#Merge CSCI data by StationCode and SampleDate.
+GISBioData <- join(GISBioData,csciData,by=c("StationCode","SampleDate"))
+GISBioData <- GISBioData[!duplicated(GISBioData),]
+
+#Run if you want to filter out data without a land usage index.
+GISBioData <- subset(GISBioData,LU_2011_5K!="NA")
+
+#Run if you want to filter out data without a CSCI value.
+GISBioData <- subset(GISBioData,CSCI!="NA")
+
+#Write out merged data set to read back in the future as opposed to 
+#generating it each time from component data files.
+write.csv(GISBioData,file="GISBioData.csv",row.names=FALSE)
+
