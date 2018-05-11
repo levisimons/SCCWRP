@@ -112,7 +112,7 @@ for(i in 1:divisionNum){
   filename = paste("CSCISweepCA",sampleNum,"S",spotNum,"R",repNum,"M",meanCSCI,sep="")
   
   #Output file for use in eLSA.
-  write.table(eLSAInput,paste(filename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
+  #write.table(eLSAInput,paste(filename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
   eLSACommand = paste("lsa_compute ",filename,".txt ","-r ",repNum," -s ",spotNum," ",filename,"Network.txt;",sep="")
   print(eLSACommand)
 }
@@ -126,7 +126,7 @@ library(stringr)
 GISBioData <- read.table("CAGISBioData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
 #Ensure that all sites have a CSCI value.
 GISBioData <- subset(GISBioData, CSCI != "NA")
-networkfiles <- Sys.glob("CSCISweepCA*Network.txt")
+networkfiles <- Sys.glob("CSCISweepCA132*Network.txt")
 networkAnalysis <- data.frame()
 networkConTaxa <- data.frame()
 networkCovTaxa <- data.frame()
@@ -148,18 +148,10 @@ for(networkFile in networkfiles){
     #Get the eigenvalues of the full weighted adjacency matrix.
     lambda_network <- eigen(networkmatrix)
     #Get the real component first eigenvalue.
-    lambda_network_1 <- Re(lambda_network$values[1])
-    #Generate randomized version of full weighted adjacency matrix.
-    set.seed(1)
-    randnetworkmatrix <- matrix(sample(as.vector((networkmatrix))),nrow=nrow(networkmatrix),ncol=ncol(networkmatrix))
-    #Get the eigenvalues of the full weighted adjacency matrix.
-    lambda_rand <- eigen(randnetworkmatrix)
-    #Get the real component of the first eigenvalue.
-    lambda_rand_1 <- Re(lambda_rand$values[1])
-    #Calculate stability parameter.
-    gamma <- lambda_network_1/lambda_rand_1
+    lambda_network_m <- Re(lambda_network$values[1])
     #Calculate the degree heterogeneity.
     networkmatrix[upper.tri(networkmatrix)] <- 0
+    networkmatrix <- ifelse(networkmatrix!=0,1,networkmatrix)
     zeta <- mean(colSums(networkmatrix)^2)/mean(colSums(networkmatrix))^2
   }
   #Filter contravariant network data based on local similarity scores.
@@ -261,7 +253,7 @@ for(networkFile in networkfiles){
   dat[1,6] <- l_cov_rL
   dat[1,7] <- l_cov_rCl
   dat[1,8] <- l_cov_rM
-  dat[1,9] <- gamma
+  dat[1,9] <- lambda_network_m
   dat[1,10] <- con_L
   dat[1,11] <- con_Cl
   dat[1,12] <- con_M
@@ -272,9 +264,9 @@ for(networkFile in networkfiles){
   dat[1,17] <- con_C
   dat[1,18] <- cov_C
   networkAnalysis <- rbind(networkAnalysis,dat)
-  print(paste(networkFile,meanCSCI,l_con_rL,l_con_rCl,l_con_rM,l_cov_rL,l_cov_rCl,l_cov_rM,gamma,con_L,con_Cl,con_M,cov_L,cov_Cl,cov_M,zeta,con_C,cov_C))
+  print(paste(networkFile,meanCSCI,l_con_rL,l_con_rCl,l_con_rM,l_cov_rL,l_cov_rCl,l_cov_rM,lambda_network_m,con_L,con_Cl,con_M,cov_L,cov_Cl,cov_M,zeta,con_C,cov_C))
 }
-colnames(networkAnalysis) <- c("filename","meanCSCI","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","gamma","con_L","con_Cl","con_M","cov_L","cov_Cl","cov_M","zeta","con_C","cov_C")
+colnames(networkAnalysis) <- c("filename","meanCSCI","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","lambda_network_m","con_L","con_Cl","con_M","cov_L","cov_Cl","cov_M","zeta","con_C","cov_C")
 networkAnalysis[networkAnalysis=="-Inf"] <- NA
 networkAnalysis[networkAnalysis=="Inf"] <- NA
 networkAnalysis <- arrange(networkAnalysis,meanCSCI)
@@ -296,3 +288,16 @@ model.list <- lapply(model.vars, function(x){
 })
 model.list
 capture.output(model.list)
+
+#Generate map of data for a given environmental parameter in California.
+library(ggmap)
+library(maps)
+library(mapdata)
+dev.off()
+MapCoordinates <- data.frame(GISBioData$CSCI,GISBioData$Longitude,GISBioData$Latitude)
+colnames(MapCoordinates) = c('CSCI','lon','lat')
+MapCoordinates <- na.omit(MapCoordinates)
+mapBoundaries <- make_bbox(lon=MapCoordinates$lon,lat=MapCoordinates$lat,f=0.1)
+CalMap <- get_map(location=mapBoundaries,maptype="satellite",source="google")
+CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = CSCI))
+CalMap
