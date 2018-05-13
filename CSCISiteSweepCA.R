@@ -134,14 +134,16 @@ networkCovTaxa <- data.frame()
 '%!in%' <- function(x,y)!('%in%'(x,y))
 for(networkFile in networkfiles){
   networkdata <- read.delim(networkFile,header=TRUE, sep="\t",as.is=T,check.names=FALSE)
-  #Filter out association network data based on P scores, for the local similarity
+  #Filter out association network data based on P and Q scores, for the local similarity
   #between two factors, with values less than 0.01.
-  networkdata <- filter(networkdata, P <= 0.01)
-  networkdata <- filter(networkdata, Q <= 0.01)
+  networkdata <- filter(networkdata, P <= 1e-4)
+  networkdata <- filter(networkdata, Q <= 1e-4)
   names(networkdata)[names(networkdata)=="LS"]<-"weight"
+  #networkdata <- filter(networkdata,abs(weight)>=0.3)
   meanCSCI <- as.numeric(str_match(networkFile,"M(.*?)Network")[2])
   #Generate network graph and begin calculating network parameters.
   networkgraph=graph.data.frame(networkdata,directed=FALSE)
+  Network_size<-network.size(as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency"))
   if(ecount(networkgraph)>0){
     #Get the full weighted adjacency matrix.
     networkmatrix <- as.matrix(get.adjacency(networkgraph,attr='weight'))
@@ -164,10 +166,22 @@ for(networkFile in networkfiles){
   #Generate network graph and begin calculating network parameters.
   networkgraphCon=graph.data.frame(networkdataCon,directed=FALSE)
   if(ecount(networkgraphCon)>0){
+    #Get the full weighted adjacency matrix.
+    networkmatrix <- as.matrix(get.adjacency(networkgraphCon,attr='weight'))
+    #Get the eigenvalues of the full weighted adjacency matrix.
+    lambda_network <- eigen(networkmatrix)
+    #Get the real component first eigenvalue.
+    lambda_network_m_Con <- Re(lambda_network$values[1])
+    #Calculate the degree heterogeneity.
+    networkmatrixCon <- networkmatrix
+    networkmatrixCon[upper.tri(networkmatrixCon)] <- 0
+    networkmatrixCon <- ifelse(networkmatrixCon!=0,1,networkmatrixCon)
+    zeta_Con <- mean(colSums(networkmatrixCon)^2)/mean(colSums(networkmatrixCon))^2
     # Generate adjacency matrix of relative taxa abundance correlations
     adj= as.network(get.adjacency(networkgraphCon,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
     # Get the number of unique network edges
     networkEdgecount <- network.edgecount(adj)
+    networkEdgecountCon <- networkEdgecount
     # Get the number of nodes
     networkNodecount <- network.size(adj)
     # Get the average degree per node.
@@ -209,10 +223,22 @@ for(networkFile in networkfiles){
   #Generate network graph and begin calculating network parameters.
   networkgraphCov=graph.data.frame(networkdataCov,directed=FALSE)
   if(ecount(networkgraph)>0){
+    #Get the full weighted adjacency matrix.
+    networkmatrix <- as.matrix(get.adjacency(networkgraphCov,attr='weight'))
+    #Get the eigenvalues of the full weighted adjacency matrix.
+    lambda_network <- eigen(networkmatrix)
+    #Get the real component first eigenvalue.
+    lambda_network_m_Cov <- Re(lambda_network$values[1])
+    #Calculate the degree heterogeneity.
+    networkmatrixCov <- networkmatrix
+    networkmatrixCov[upper.tri(networkmatrixCov)] <- 0
+    networkmatrixCov <- ifelse(networkmatrixCov!=0,1,networkmatrixCov)
+    zeta_Cov <- mean(colSums(networkmatrixCov)^2)/mean(colSums(networkmatrixCov))^2
     # Generate adjacency matrix of relative taxa abundance correlations
     adj= as.network(get.adjacency(networkgraphCov,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
     # Get the number of unique network edges
     networkEdgecount <- network.edgecount(adj)
+    networkEdgecountCov <- networkEdgecount
     # Get the number of nodes
     networkNodecount <- network.size(adj)
     # Get the average degree per node.
@@ -263,41 +289,46 @@ for(networkFile in networkfiles){
   dat[1,16] <- zeta
   dat[1,17] <- con_C
   dat[1,18] <- cov_C
+  dat[1,19] <- Network_size
+  dat[1,20] <- Pm <- networkEdgecountCov/(networkEdgecountCov+networkEdgecountCon)
+  dat[1,21] <- lambda_network_m_Con
+  dat[1,22] <- lambda_network_m_Cov
+  dat[1,23] <- zeta_Con
+  dat[1,24] <- zeta_Cov
   networkAnalysis <- rbind(networkAnalysis,dat)
-  print(paste(networkFile,meanCSCI,l_con_rL,l_con_rCl,l_con_rM,l_cov_rL,l_cov_rCl,l_cov_rM,lambda_network_m,con_L,con_Cl,con_M,cov_L,cov_Cl,cov_M,zeta,con_C,cov_C))
+  print(paste(networkFile,meanCSCI,l_con_rL,l_con_rCl,l_con_rM,l_cov_rL,l_cov_rCl,l_cov_rM,lambda_network_m,con_L,con_Cl,con_M,cov_L,cov_Cl,cov_M,zeta,con_C,cov_C,Network_size,Pm,lambda_network_m_Con,lambda_network_m_Cov,zeta_Con,zeta_Cov))
 }
-colnames(networkAnalysis) <- c("filename","meanCSCI","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","lambda_network_m","con_L","con_Cl","con_M","cov_L","cov_Cl","cov_M","zeta","con_C","cov_C")
+colnames(networkAnalysis) <- c("filename","meanCSCI","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","lambda_network_m","con_L","con_Cl","con_M","cov_L","cov_Cl","cov_M","zeta","con_C","cov_C","Network_size","Pm","lambda_network_m_Con","lambda_network_m_Cov","zeta_Con","zeta_Cov")
 networkAnalysis[networkAnalysis=="-Inf"] <- NA
 networkAnalysis[networkAnalysis=="Inf"] <- NA
 networkAnalysis <- arrange(networkAnalysis,meanCSCI)
 
-#Output the frequency with which significantly covariant or contravariant
-#taxa show up in each subset of the site data.
-write.table(networkConTaxa,"networkConTaxa.txt",quote=FALSE,sep="\t",row.names = FALSE)
-write.table(networkCovTaxa,"networkCovTaxa.txt",quote=FALSE,sep="\t",row.names = FALSE)
+#Regression between network parameters.
+library(Hmisc)
+res2<-rcorr(as.matrix(networkAnalysis[,-c(1)]))
+library(corrplot)
+#Correlation plot.  Insignificant correlations are leaved blank.
+corrplot(res2$r, type="upper", order="hclust", p.mat = res2$P, sig.level = 0.01, insig = "blank")
+library("PerformanceAnalytics")
+#Each significance level is associated to a symbol : p-values(0, 0.001, 0.01, 0.05, 0.1, 1) <=> symbols(“***”, “**”, “*”, “.”, " “)
+chart.Correlation(networkAnalysis[,-c(1)], histogram=TRUE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanCSCI","con_L","l_con_rL","cov_L","l_cov_rL")], histogram=TRUE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanCSCI","con_Cl","l_con_rCl","cov_Cl","l_cov_rCl")], histogram=TRUE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanCSCI","con_M","l_con_rM","cov_M","l_cov_rM")], histogram=TRUE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanCSCI","con_C","cov_C","Pm")], histogram=TRUE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanCSCI","zeta","lambda_network_m","lambda_network_m_Con","zeta_Con","lambda_network_m_Cov","zeta_Cov")], histogram=TRUE, method="spearman")
+chart.Correlation(networkAnalysis[,c("lambda_network_m_Con","con_M","l_con_rM","lambda_network_m_Cov","cov_M","l_cov_rM")], histogram=TRUE, method="spearman")
+chart.Correlation(networkAnalysis[,c("lambda_network_m_Con","con_C","lambda_network_m_Cov","cov_C","lambda_network_m","Pm")], histogram=TRUE, method="spearman")
 
-#Regression between network parameters and CSCI
-library(PerformanceAnalytics)
-library(aod)
-library(glmm)
-library(rcompanion)
-model.vars <- names(networkAnalysis)[-c(1,16)]
-model.list <- lapply(model.vars, function(x){
-  #summary(glm(substitute(zeta ~ i, list(i=as.name(x))),data=networkAnalysis),correlation=TRUE)$coefficients
-  summary(glm(substitute(zeta ~ i, list(i=as.name(x))),data=networkAnalysis),correlation=TRUE)
-})
-model.list
-capture.output(model.list)
-
-#Generate map of data for a given environmental parameter in California.
+#To generate map of data for a given environmental parameter in California.
 library(ggmap)
 library(maps)
 library(mapdata)
 dev.off()
-MapCoordinates <- data.frame(GISBioData$CSCI,GISBioData$Longitude,GISBioData$Latitude)
-colnames(MapCoordinates) = c('CSCI','lon','lat')
+MapCoordinates <- data.frame(GISBioData$LU_2000_5K,GISBioData$Longitude,GISBioData$Latitude)
+colnames(MapCoordinates) = c('LU','lon','lat')
 MapCoordinates <- na.omit(MapCoordinates)
 mapBoundaries <- make_bbox(lon=MapCoordinates$lon,lat=MapCoordinates$lat,f=0.1)
 CalMap <- get_map(location=mapBoundaries,maptype="satellite",source="google")
-CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = CSCI))
+CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = LU))
 CalMap
