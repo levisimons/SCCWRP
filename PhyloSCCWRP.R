@@ -128,35 +128,47 @@ BMIData$UniqueID <- paste(BMIData$StationCode,BMIData$SampleDate)
 BMIData <- BMIData[,c("StationCode","SampleDate","UniqueID","FinalID","MeasurementType","Measurement","BAResult","ActualOrganismCount")]
 names(BMIData)[names(BMIData)=="BAResult"]<-"Count"
 
-#Bind the data frames back together as a unified biological set.
-bioData <- rbind(benthicAlgaeData,softAlgaeData,BMIData)
-bioData <- bioData[order(bioData$UniqueID),]
+#Select taxa group for downstream Phyloseq work and network generation.
+otudata <- BMIData
 
 #Read in CSCI and land usage data by sample.
-GISData <- read.csv("CSCI.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
-
-#Join CSCI data set with the biological data set.
-GISBioData <- join(bioData,GISData,by=c("StationCode","SampleDate"))
+GISDataRAW <- read.csv("CSCI.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
+GISData <- subset(GISDataRAW,FieldReplicate==1)
+GISData$UniqueID <- paste(GISData$StationCode,GISData$SampleDate)
+GISData <- subset(GISData,GISData$UniqueID %in% unique(otudata$UniqueID))
+GISData <- GISData[!duplicated(GISData$UniqueID),]
 
 #Add in aggregated land coverage at a 5km watershed buffer.
-GISBioData$LU_2000_5K <- with(GISBioData,Ag_2000_5K+CODE_21_2000_5K+URBAN_2000_5K)
+GISData$LU_2000_5K <- with(GISData,Ag_2000_5K+CODE_21_2000_5K+URBAN_2000_5K)
 
+#Final step to ensure that both the factors and biological data have the same set of sample IDs.
+otudata <- subset(otudata,otudata$UniqueID %in% unique(GISData$UniqueID))
+
+#Generate an OTU table of SCCWRP data for use in Phyloseq.
 OTUID <- as.data.frame(taxaID)
 colnames(OTUID) <- c("FinalID")
-for(sample in unique(BMIData$UniqueID)){
-  tmp1 <- subset(BMIData,UniqueID==sample)
+for(sample in unique(otudata$UniqueID)){
+  tmp1 <- subset(otudata,UniqueID==sample)
   tmp1 <- join(OTUID,tmp1,by=c("FinalID"))[,c("FinalID","Count")]
   OTUID <- cbind(OTUID,tmp1$Count)
   names(OTUID)[names(OTUID)=="tmp1$Count"]<-sample
   print(sample)
 }
 
+#Create Phyloseq object with the OTU table and taxonomic data.
 otumat <- as.matrix(OTUID[,-c(1)])
-taxmat <- as.matrix(taxa)
-
+rownames(otumat) <- OTUID$FinalID
 OTU = otu_table(otumat,taxa_are_rows = TRUE)
+taxmat <- as.matrix(taxa)
+rownames(taxmat) <- taxa$FinalID
+taxmat <- taxmat[,-c(6)]
 TAX = tax_table(taxmat)
-physeq = phyloseq(OTU,TAX)
+
+#Create the sample factor object and merge it into the SCCWRP Phyloseq object.
+samplemat <- as.matrix(GISData)
+row.names(samplemat) <- GISData$UniqueID
+sampledata <- sample_data(as.data.frame(samplemat))
+physeq <- phyloseq(OTU,TAX,sampledata)
 
 #Write out merged data set to read back in the future as opposed to 
 #generating it each time from component data files.
