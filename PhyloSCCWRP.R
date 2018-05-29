@@ -7,7 +7,7 @@ library("vegan")
 library("microbiome")
 library(data.table)
 library(tidyr)
-library(taxize)
+library("phyloseq")
 
 setwd("~/Desktop/SCCWRP")
 
@@ -93,7 +93,8 @@ benthicAlgaeData$MeasurementType <- "benthic alage relative abundance"
 #Add unique ID per sample.
 benthicAlgaeData$UniqueID <- paste(benthicAlgaeData$StationCode,benthicAlgaeData$SampleDate)
 #Subset key columns.
-benthicAlgaeData <- benthicAlgaeData[,c("StationCode","SampleDate","UniqueID","FinalID","MeasurementType","Measurement")]
+benthicAlgaeData <- benthicAlgaeData[,c("StationCode","SampleDate","UniqueID","FinalID","MeasurementType","Measurement","BAResult","ActualOrganismCount")]
+names(benthicAlgaeData)[names(benthicAlgaeData)=="BAResult"]<-"Count"
 
 #Determine the soft-bodied algae totals count column and make it a temporary dataframe.
 tmp1<-data.table(softAlgaeData)
@@ -108,7 +109,8 @@ softAlgaeData$MeasurementType <- "soft-bodied alage relative abundance"
 #Add unique ID per sample.
 softAlgaeData$UniqueID <- paste(softAlgaeData$StationCode,softAlgaeData$SampleDate)
 #Subset key columns.
-softAlgaeData <- softAlgaeData[,c("StationCode","SampleDate","UniqueID","FinalID","MeasurementType","Measurement")]
+softAlgaeData <- softAlgaeData[,c("StationCode","SampleDate","UniqueID","FinalID","MeasurementType","Measurement","Result","ActualOrganismCount")]
+names(softAlgaeData)[names(softAlgaeData)=="Result"]<-"Count"
 
 #Determine the benthic algae totals count column and make it a temporary dataframe.
 tmp1<-data.table(BMIData)
@@ -123,7 +125,8 @@ BMIData$MeasurementType <- "benthic macroinvertebrate relative abundance"
 #Add unique ID per sample.
 BMIData$UniqueID <- paste(BMIData$StationCode,BMIData$SampleDate)
 #Subset key columns.
-BMIData <- BMIData[,c("StationCode","SampleDate","UniqueID","FinalID","MeasurementType","Measurement")]
+BMIData <- BMIData[,c("StationCode","SampleDate","UniqueID","FinalID","MeasurementType","Measurement","BAResult","ActualOrganismCount")]
+names(BMIData)[names(BMIData)=="BAResult"]<-"Count"
 
 #Bind the data frames back together as a unified biological set.
 bioData <- rbind(benthicAlgaeData,softAlgaeData,BMIData)
@@ -138,8 +141,23 @@ GISBioData <- join(bioData,GISData,by=c("StationCode","SampleDate"))
 #Add in aggregated land coverage at a 5km watershed buffer.
 GISBioData$LU_2000_5K <- with(GISBioData,Ag_2000_5K+CODE_21_2000_5K+URBAN_2000_5K)
 
+OTUID <- as.data.frame(taxaID)
+colnames(OTUID) <- c("FinalID")
+for(sample in unique(BMIData$UniqueID)){
+  tmp1 <- subset(BMIData,UniqueID==sample)
+  tmp1 <- join(OTUID,tmp1,by=c("FinalID"))[,c("FinalID","Count")]
+  OTUID <- cbind(OTUID,tmp1$Count)
+  names(OTUID)[names(OTUID)=="tmp1$Count"]<-sample
+  print(sample)
+}
 
+otumat <- as.matrix(OTUID[,-c(1)])
+taxmat <- as.matrix(taxa)
+
+OTU = otu_table(otumat,taxa_are_rows = TRUE)
+TAX = tax_table(taxmat)
+physeq = phyloseq(OTU,TAX)
 
 #Write out merged data set to read back in the future as opposed to 
 #generating it each time from component data files.
-write.csv(GISBioData,file="CAGISBioData.csv",row.names=FALSE)
+#write.csv(GISBioData,file="CAGISBioData.csv",row.names=FALSE)
