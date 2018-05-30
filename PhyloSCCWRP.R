@@ -8,6 +8,7 @@ library("microbiome")
 library(data.table)
 library(tidyr)
 library("phyloseq")
+library(lattice)
 
 setwd("~/Desktop/SCCWRP")
 
@@ -32,12 +33,11 @@ CEDENTaxa <- rbind(algaeTaxaCEDEN,insectTaxaCEDEN)
 CEDENHighTaxa <- CEDENTaxa[,c("Phylum","Class","Order")]
 
 SMCDataRaw <- read.table("SMCAllSites.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
-SMCData <- SMCDataRaw
-SMCTaxa <- as.data.frame(unique(SMCDataRaw$FinalID))
-colnames(SMCTaxa) <- c("FinalID")
-SMCTaxa <- SMCData[match(unique(SMCData$FinalID), SMCData$FinalID),]
-SMCTaxa <- SMCTaxa[,c("Order","Family","Genus","FinalID")]
-SMCTaxa <- join(CEDENHighTaxa,SMCTaxa,by=c("Order"))
+SMCData <- SMCDataRaw[,c("Order","Family","Genus","FinalID")]
+SMCData <- SMCData[!duplicated(SMCData$FinalID),]
+SMCTaxa <- join(SMCData,CEDENHighTaxa,by=c("Order"))
+SMCTaxa <- SMCTaxa[!duplicated(SMCTaxa$FinalID),]
+SMCTaxa <- SMCTaxa[,c("Phylum","Class","Order","Family","Genus","FinalID")]
 
 #Merge to make a unified taxonomy table
 taxa <- rbind(SMCTaxa,CEDENTaxa)
@@ -67,9 +67,11 @@ algaeData <- subset(bioData,bioData$FinalID %in% algaeID)
 #Separate out benthic algae counts.
 benthicAlgaeData <- algaeData[!is.na(algaeData$BAResult),]
 benthicAlgaeData <- benthicAlgaeData[,c("StationCode","SampleDate","FinalID","BAResult")]
+benthicAlgaeID <- unique(benthicAlgaeData$FinalID)
 #Separate out soft-bodied algae counts.
 softAlgaeData <- algaeData[!is.na(algaeData$Result),]
 softAlgaeData <- softAlgaeData[,c("StationCode","SampleDate","FinalID","Result")]
+softAlgaeID <- unique(softAlgaeData$FinalID)
 
 #Separate benthic macroinvertebrate counts.
 BMI <- filter(oldSet,MeasurementType=="Invertebrate relative abundance" | MeasurementType=="Invertebrate relative abundances")
@@ -145,7 +147,7 @@ GISData$LU_2000_5K <- with(GISData,Ag_2000_5K+CODE_21_2000_5K+URBAN_2000_5K)
 otudata <- subset(otudata,otudata$UniqueID %in% unique(GISData$UniqueID))
 
 #Generate an OTU table of SCCWRP data for use in Phyloseq.
-OTUID <- as.data.frame(taxaID)
+OTUID <- as.data.frame(BMIID)
 colnames(OTUID) <- c("FinalID")
 for(sample in unique(otudata$UniqueID)){
   tmp1 <- subset(otudata,UniqueID==sample)
@@ -155,21 +157,30 @@ for(sample in unique(otudata$UniqueID)){
   print(sample)
 }
 
-#Create Phyloseq object with the OTU table and taxonomic data.
+#Create Phyloseq object with the OTU table, sample factors, and taxonomic data.
 otumat <- as.matrix(OTUID[,-c(1)])
+otumat[is.na(otumat)] <- 0
 rownames(otumat) <- OTUID$FinalID
 OTU = otu_table(otumat,taxa_are_rows = TRUE)
-taxmat <- as.matrix(taxa)
-rownames(taxmat) <- taxa$FinalID
+taxmat <- as.matrix(subset(taxa,taxa$FinalID %in% BMIID))
+rownames(taxmat) <- as.data.frame(taxmat)$FinalID
 taxmat <- taxmat[,-c(6)]
 TAX = tax_table(taxmat)
-
-#Create the sample factor object and merge it into the SCCWRP Phyloseq object.
 samplemat <- as.matrix(GISData)
 row.names(samplemat) <- GISData$UniqueID
 sampledata <- sample_data(as.data.frame(samplemat))
 physeq <- phyloseq(OTU,TAX,sampledata)
 
+test<-subset_samples(physeq,SMCShed=="SanGabriel")
+#test <- transform_sample_counts(test, function(x) x/sum(x))
+test<-tax_glom(test,taxrank=rank_names(test)[2],NArm=TRUE,bad_empty=NA)
+
+Dist = distance(test, method = "chao")
+ord = ordinate(test, method = "PCoA", distance = Dist)
+plot_scree(ord, "Scree Plot: Bray-Curtis MDS")
+
+levelplot(as.matrix(Dist))
+hist(as.vector(as.matrix(Dist)))
 #Write out merged data set to read back in the future as opposed to 
 #generating it each time from component data files.
 #write.csv(GISBioData,file="CAGISBioData.csv",row.names=FALSE)
