@@ -66,72 +66,46 @@ algaeID <- unique(algae$FinalID)
 algaeData <- subset(bioData,bioData$FinalID %in% algaeID)
 #Separate out benthic algae counts.
 benthicAlgaeData <- algaeData[!is.na(algaeData$BAResult),]
-benthicAlgaeData <- benthicAlgaeData[,c("StationCode","SampleDate","FinalID","BAResult")]
+#Add unique ID per sample.
+benthicAlgaeData$UniqueID <- paste(benthicAlgaeData$StationCode,benthicAlgaeData$SampleDate)
+benthicAlgaeData <- benthicAlgaeData[,c("StationCode","SampleDate","FinalID","BAResult",'UniqueID')]
 benthicAlgaeID <- unique(benthicAlgaeData$FinalID)
 #Separate out soft-bodied algae counts.
 softAlgaeData <- algaeData[!is.na(algaeData$Result),]
-softAlgaeData <- softAlgaeData[,c("StationCode","SampleDate","FinalID","Result")]
+#Add unique ID per sample.
+softAlgaeData$UniqueID <- paste(softAlgaeData$StationCode,softAlgaeData$SampleDate)
+softAlgaeData <- softAlgaeData[,c("StationCode","SampleDate","FinalID","Result","UniqueID")]
 softAlgaeID <- unique(softAlgaeData$FinalID)
+
+#Determine the benthic algae totals count column and make it a temporary dataframe.
+tmp1<-data.table(benthicAlgaeData)
+tmp1<-tmp1[,.(BAResult=sum(BAResult)),by=.(UniqueID,FinalID)]
+benthicAlgaeData <- tmp1
+names(benthicAlgaeData)[names(benthicAlgaeData)=="BAResult"]<-"Count"
+
+#Determine the soft-bodied algae totals count column and make it a temporary dataframe.
+tmp1<-data.table(softAlgaeData)
+tmp1<-tmp1[,.(Result=sum(Result)),by=.(UniqueID,FinalID)]
+softAlgaeData <- tmp1
+names(softAlgaeData)[names(softAlgaeData)=="Result"]<-"Count"
 
 #Separate benthic macroinvertebrate counts.
 BMI <- filter(oldSet,MeasurementType=="Invertebrate relative abundance" | MeasurementType=="Invertebrate relative abundances")
 BMIID <- unique (BMI$FinalID)
 BMIData <- subset(bioData,bioData$FinalID %in% BMIID)
-BMIData <- BMIData[,c("StationCode","SampleDate","FinalID","BAResult")]
-tmp1<-data.table(BMIData)
-#Sum insect counts for matching IDs, but with different life stages.
-BMIData<-tmp1[,.(BAResult=sum(BAResult)),by=.(StationCode,SampleDate,FinalID)]
-
-#Determine the benthic algae totals count column and make it a temporary dataframe.
-tmp1<-data.table(benthicAlgaeData)
-tmp1<-tmp1[,.(BAResult=sum(BAResult)),by=.(StationCode,SampleDate)]
-colnames(tmp1) <- c("StationCode","SampleDate","ActualOrganismCount")
-#Join the total benthic algal count by sample to each unique sample.
-benthicAlgaeData <- join(benthicAlgaeData,tmp1,by=c("StationCode","SampleDate"))
-#Calculate the relative abundance of benthic algae data.
-benthicAlgaeData$Measurement <- with(benthicAlgaeData,BAResult/ActualOrganismCount)
-#Add measurement type label.
-benthicAlgaeData$MeasurementType <- "benthic alage relative abundance"
-#Add unique ID per sample.
-benthicAlgaeData$UniqueID <- paste(benthicAlgaeData$StationCode,benthicAlgaeData$SampleDate)
-#Subset key columns.
-benthicAlgaeData <- benthicAlgaeData[,c("StationCode","SampleDate","UniqueID","FinalID","MeasurementType","Measurement","BAResult","ActualOrganismCount")]
-names(benthicAlgaeData)[names(benthicAlgaeData)=="BAResult"]<-"Count"
-
-#Determine the soft-bodied algae totals count column and make it a temporary dataframe.
-tmp1<-data.table(softAlgaeData)
-tmp1<-tmp1[,.(Result=sum(Result)),by=.(StationCode,SampleDate)]
-colnames(tmp1) <- c("StationCode","SampleDate","ActualOrganismCount")
-#Join the total benthic algal count by sample to each unique sample.
-softAlgaeData <- join(softAlgaeData,tmp1,by=c("StationCode","SampleDate"))
-#Calculate the relative abundance of benthic algae data.
-softAlgaeData$Measurement <- with(softAlgaeData,Result/ActualOrganismCount)
-#Add measurement type label.
-softAlgaeData$MeasurementType <- "soft-bodied alage relative abundance"
-#Add unique ID per sample.
-softAlgaeData$UniqueID <- paste(softAlgaeData$StationCode,softAlgaeData$SampleDate)
-#Subset key columns.
-softAlgaeData <- softAlgaeData[,c("StationCode","SampleDate","UniqueID","FinalID","MeasurementType","Measurement","Result","ActualOrganismCount")]
-names(softAlgaeData)[names(softAlgaeData)=="Result"]<-"Count"
-
-#Determine the benthic algae totals count column and make it a temporary dataframe.
-tmp1<-data.table(BMIData)
-tmp1<-tmp1[,.(BAResult=sum(BAResult)),by=.(StationCode,SampleDate)]
-colnames(tmp1) <- c("StationCode","SampleDate","ActualOrganismCount")
-#Join the total benthic macroinvertebrate count by sample to each unique sample.
-BMIData <- join(BMIData,tmp1,by=c("StationCode","SampleDate"))
-#Calculate the relative abundance of benthic algae data.
-BMIData$Measurement <- with(BMIData,BAResult/ActualOrganismCount)
-#Add measurement type label.
-BMIData$MeasurementType <- "benthic macroinvertebrate relative abundance"
 #Add unique ID per sample.
 BMIData$UniqueID <- paste(BMIData$StationCode,BMIData$SampleDate)
-#Subset key columns.
-BMIData <- BMIData[,c("StationCode","SampleDate","UniqueID","FinalID","MeasurementType","Measurement","BAResult","ActualOrganismCount")]
+BMIData <- BMIData[,c("UniqueID","FinalID","BAResult")]
+#Determine the benthic invertebrate totals count column and make it a temporary dataframe.
+tmp1<-data.table(BMIData)
+tmp1<-tmp1[,.(BAResult=sum(BAResult)),by=.(UniqueID,FinalID)]
+BMIData <- tmp1
 names(BMIData)[names(BMIData)=="BAResult"]<-"Count"
 
 #Select taxa group for downstream Phyloseq work and network generation.
-otudata <- BMIData
+otudata <- benthicAlgaeData
+OTUID <- as.data.frame(benthicAlgaeID)
+colnames(OTUID) <- c("FinalID")
 
 #Read in CSCI and land usage data by sample.
 GISDataRAW <- read.csv("CSCI.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
@@ -147,8 +121,6 @@ GISData$LU_2000_5K <- with(GISData,Ag_2000_5K+CODE_21_2000_5K+URBAN_2000_5K)
 otudata <- subset(otudata,otudata$UniqueID %in% unique(GISData$UniqueID))
 
 #Generate an OTU table of SCCWRP data for use in Phyloseq.
-OTUID <- as.data.frame(BMIID)
-colnames(OTUID) <- c("FinalID")
 for(sample in unique(otudata$UniqueID)){
   tmp1 <- subset(otudata,UniqueID==sample)
   tmp1 <- join(OTUID,tmp1,by=c("FinalID"))[,c("FinalID","Count")]
@@ -162,7 +134,7 @@ otumat <- as.matrix(OTUID[,-c(1)])
 otumat[is.na(otumat)] <- 0
 rownames(otumat) <- OTUID$FinalID
 OTU = otu_table(otumat,taxa_are_rows = TRUE)
-taxmat <- as.matrix(subset(taxa,taxa$FinalID %in% BMIID))
+taxmat <- as.matrix(subset(taxa,taxa$FinalID %in% OTUID$FinalID))
 rownames(taxmat) <- as.data.frame(taxmat)$FinalID
 taxmat <- taxmat[,-c(6)]
 TAX = tax_table(taxmat)
@@ -171,11 +143,11 @@ row.names(samplemat) <- GISData$UniqueID
 sampledata <- sample_data(as.data.frame(samplemat))
 physeq <- phyloseq(OTU,TAX,sampledata)
 
-test<-subset_samples(physeq,SMCShed=="SanGabriel")
+test<-subset_samples(physeq)
 #test <- transform_sample_counts(test, function(x) x/sum(x))
-test<-tax_glom(test,taxrank=rank_names(test)[2],NArm=TRUE,bad_empty=NA)
+test<-tax_glom(test,taxrank=rank_names(test)[4],NArm=TRUE,bad_empty=NA)
 
-Dist = distance(test, method = "chao")
+Dist = distance(test, method = "morisita")
 ord = ordinate(test, method = "PCoA", distance = Dist)
 plot_scree(ord, "Scree Plot: Bray-Curtis MDS")
 
