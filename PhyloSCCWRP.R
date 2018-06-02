@@ -194,4 +194,22 @@ distmat$Lon2 <- as.numeric(as.character(distmat$Lon2))
 #Add in geodesic distances to compare separation distance to beta diversity distance.
 distmat$SpatialDistance <- lapply(1:nrow(distmat),function(x) as.numeric((distm(as.matrix(distmat[x,c("Lon1","Lat1")]), as.matrix(distmat[x,c("Lon2","Lat2")]), fun = distGeo))))
 distmat$SpatialDistance <- as.numeric(distmat$SpatialDistance)
-plot(distmat$SpatialDistance,distmat$DiversityDistance)
+
+#Regression between network parameters.
+library(Hmisc)
+library(corrplot)
+library("PerformanceAnalytics")
+chart.Correlation(GISData[,c("LU_2000_5K","Simpson","altitude","CSCI")], histogram=TRUE, method="spearman")
+
+#Generate map of data for a given chemical parameter in California.
+library(ggmap)
+library(maps)
+library(mapdata)
+dev.off()
+MapCoordinates <- data.frame(GISData$LU_2000_5K,GISData$Simpson,GISData$altitude,GISData$Longitude,GISData$Latitude)
+colnames(MapCoordinates) = c('LU_2000_5K','Simpson','alt','lon','lat')
+MapCoordinates <- na.omit(MapCoordinates)
+mapBoundaries <- make_bbox(lon=MapCoordinates$lon,lat=MapCoordinates$lat,f=0.1)
+CalMap <- get_map(location=mapBoundaries,maptype="satellite",source="google")
+CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = LU_2000_5K),size=0.1)+scale_colour_gradientn(colours=rainbow(4))
+CalMap
