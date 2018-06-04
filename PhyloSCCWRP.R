@@ -129,24 +129,56 @@ GISData$Year <- year(mdy(GISData$SampleDate))
 #Final step to ensure that both the factors and biological data have the same set of sample IDs.
 otudata <- subset(otudata,otudata$UniqueID %in% unique(GISData$UniqueID))
 
-#Generate a diversity metric dataframe.
-#siteDiversity <- data.frame(nrow=1,ncol=2)
-#colnames(siteDiversity) <- c("UniqueID","Simpson")
-#tmp2 <- data.frame(nrow=1,ncol=2)
-#colnames(tmp2) <- c("UniqueID","Simpson")
-
-#Generate an OTU table of SCCWRP data for use in Phyloseq.
-#Generate diversity metrics per sample.
+#To generate an OTU table of SCCWRP data for use in Phyloseq.
 for(sample in unique(otudata$UniqueID)){
   tmp1 <- subset(otudata,UniqueID==sample)
   tmp1 <- join(OTUID,tmp1,by=c("FinalID"))[,c("FinalID","Count")]
   OTUID <- cbind(OTUID,tmp1$Count)
   names(OTUID)[names(OTUID)=="tmp1$Count"]<-sample
-  #tmp2$UniqueID <- sample
-  #tmp2$Simpson <- diversity(subset(tmp1$Count,tmp1$Count > 0),index="simpson")
-  #siteDiversity <- rbind(siteDiversity,tmp2)
+}
+
+#Generate diversity metrics per sample.
+library("gambin")
+siteDiversity <- as.data.frame(matrix(NA,nrow=1,ncol=6))
+colnames(siteDiversity) <- c("UniqueID","gambinAlpha","Simpson","InvSimpson","nTaxa","Shannon")
+tmp2 <- as.data.frame(matrix(NA,nrow=1,ncol=6))
+colnames(tmp2) <- c("UniqueID","gambinAlpha","Simpson","InvSimpson","nTaxa","Shannon")
+for(sample in unique(otudata$UniqueID)){
+  tmp1 <- subset(otudata,UniqueID==sample)
+  tmp2$UniqueID <- sample
+  #Rarefy samples to 500 counts.  Permute and take the mean.
+  RAD <- matrix(NA,nrow=1,ncol=nrow(tmp1))
+  for(i in 1:20){
+    tmp3 <- rrarefy(tmp1$Count,500)
+    RAD <- mapply(c,as.data.frame(RAD),as.data.frame(tmp3))
+  }
+  RAD <- as.integer(colMeans(RAD+0.5,na.rm=TRUE))
+  #To calculate the Gambin alpha parameter per sample
+  tmp2$nTaxa <- nrow(tmp1)
+  if(sum(RAD)>=500){
+    gambin_fit <- fit_abundances(RAD)
+    tmp2$gambinAlpha <- gambin_fit$alpha
+    tmp2$Simpson <- diversity(RAD,index="simpson")
+    tmp2$InvSimpson <- diversity(RAD,index="invsimpson")
+    tmp2$Shannon <- diversity(RAD,index="shannon")
+    }
+  if(sum(RAD)<500){
+    tmp2$gambinAlpha <- NA
+    tmp2$Simpson <- NA
+    tmp2$InvSimpson <- NA
+    tmp2$Shannon <- NA
+  }
+  siteDiversity <- rbind(siteDiversity,tmp2)
   print(sample)
 }
+
+siteDiversity <- siteDiversity[-c(1),]
+GISData$gambinAlpha <- siteDiversity$gambinAlpha
+GISData$Simpson <- siteDiversity$Simpson
+GISData$InvSimpson <- siteDiversity$InvSimpson
+GISData$nTaxa <- siteDiversity$nTaxa
+GISData$Shannon <- siteDiversity$Shannon
+write.csv(GISData,file="CSCI.csv",row.names=FALSE)
 
 #Create Phyloseq object with the OTU table, sample factors, and taxonomic data.
 otumat <- as.matrix(OTUID[,-c(1)])
@@ -199,17 +231,17 @@ distmat$SpatialDistance <- as.numeric(distmat$SpatialDistance)
 library(Hmisc)
 library(corrplot)
 library("PerformanceAnalytics")
-chart.Correlation(GISData[,c("LU_2000_5K","Simpson","altitude","CSCI")], histogram=TRUE, method="spearman")
+chart.Correlation(GISData[,c("LU_2000_5K","altitude","nTaxa","Simpson","InvSimpson","gambinAlpha","Shannon","CSCI")], histogram=TRUE, method="spearman")
 
 #Generate map of data for a given chemical parameter in California.
 library(ggmap)
 library(maps)
 library(mapdata)
 dev.off()
-MapCoordinates <- data.frame(GISData$LU_2000_5K,GISData$Simpson,GISData$altitude,GISData$Longitude,GISData$Latitude)
-colnames(MapCoordinates) = c('LU_2000_5K','Simpson','alt','lon','lat')
+MapCoordinates <- data.frame(GISData$LU_2000_5K,GISData$Simpson,GISData$CSCI,GISData$alpha,GISData$altitude,GISData$Longitude,GISData$Latitude)
+colnames(MapCoordinates) = c('LU_2000_5K','Simpson','CSCI','alpha','alt','lon','lat')
 MapCoordinates <- na.omit(MapCoordinates)
 mapBoundaries <- make_bbox(lon=MapCoordinates$lon,lat=MapCoordinates$lat,f=0.1)
 CalMap <- get_map(location=mapBoundaries,maptype="satellite",source="google")
-CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = LU_2000_5K),size=0.1)+scale_colour_gradientn(colours=rainbow(4))
+CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = alpha),size=1)+scale_colour_gradientn(colours=rainbow(4))
 CalMap
