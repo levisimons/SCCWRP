@@ -139,10 +139,10 @@ for(sample in unique(otudata$UniqueID)){
 
 #Generate diversity metrics per sample.
 library("gambin")
-siteDiversity <- as.data.frame(matrix(NA,nrow=1,ncol=6))
-colnames(siteDiversity) <- c("UniqueID","gambinAlpha","Simpson","InvSimpson","nTaxa","Shannon")
-tmp2 <- as.data.frame(matrix(NA,nrow=1,ncol=6))
-colnames(tmp2) <- c("UniqueID","gambinAlpha","Simpson","InvSimpson","nTaxa","Shannon")
+siteDiversity <- as.data.frame(matrix(NA,nrow=1,ncol=7))
+colnames(siteDiversity) <- c("UniqueID","gambinAlpha","Simpson","InvSimpson","nTaxa","Shannon","fisherAlpha")
+tmp2 <- as.data.frame(matrix(NA,nrow=1,ncol=7))
+colnames(tmp2) <- c("UniqueID","gambinAlpha","Simpson","InvSimpson","nTaxa","Shannon","fisherAlpha")
 for(sample in unique(otudata$UniqueID)){
   tmp1 <- subset(otudata,UniqueID==sample)
   tmp2$UniqueID <- sample
@@ -161,12 +161,14 @@ for(sample in unique(otudata$UniqueID)){
     tmp2$Simpson <- diversity(RAD,index="simpson")
     tmp2$InvSimpson <- diversity(RAD,index="invsimpson")
     tmp2$Shannon <- diversity(RAD,index="shannon")
-    }
+    tmp2$fisherAlpha <- fisher.alpha(RAD)
+  }
   if(sum(RAD)<500){
     tmp2$gambinAlpha <- NA
     tmp2$Simpson <- NA
     tmp2$InvSimpson <- NA
     tmp2$Shannon <- NA
+    tmp2$fisherAlpha <- NA
   }
   siteDiversity <- rbind(siteDiversity,tmp2)
   print(sample)
@@ -178,6 +180,7 @@ GISData$Simpson <- siteDiversity$Simpson
 GISData$InvSimpson <- siteDiversity$InvSimpson
 GISData$nTaxa <- siteDiversity$nTaxa
 GISData$Shannon <- siteDiversity$Shannon
+GISData$fisherAlpha <- siteDiversity$fisherAlpha
 write.csv(GISData,file="CSCI.csv",row.names=FALSE)
 
 #Create Phyloseq object with the OTU table, sample factors, and taxonomic data.
@@ -231,17 +234,17 @@ distmat$SpatialDistance <- as.numeric(distmat$SpatialDistance)
 library(Hmisc)
 library(corrplot)
 library("PerformanceAnalytics")
-chart.Correlation(GISData[,c("LU_2000_5K","altitude","nTaxa","Simpson","InvSimpson","gambinAlpha","Shannon","CSCI")], histogram=TRUE, method="spearman")
+chart.Correlation(GISData[,c("LU_2000_5K","altitude","nTaxa","Simpson","InvSimpson","gambinAlpha","fisherAlpha","Shannon","CSCI")], histogram=TRUE, method="spearman")
 
 #Generate map of data for a given chemical parameter in California.
 library(ggmap)
 library(maps)
 library(mapdata)
 dev.off()
-MapCoordinates <- data.frame(GISData$LU_2000_5K,GISData$Simpson,GISData$CSCI,GISData$alpha,GISData$altitude,GISData$Longitude,GISData$Latitude)
-colnames(MapCoordinates) = c('LU_2000_5K','Simpson','CSCI','alpha','alt','lon','lat')
+MapCoordinates <- data.frame(GISData$LU_2000_5K,GISData$gambinAlpha,GISData$Simpson,GISData$InvSimpson,GISData$nTaxa,GISData$Shannon,GISData$CSCI,GISData$altitude,GISData$Longitude,GISData$Latitude)
+colnames(MapCoordinates) = c("LU_2000_5K","gambinAlpha","Simpson","InvSimpson","nTaxa","Shannon","CSCI",'alt','lon','lat')
 MapCoordinates <- na.omit(MapCoordinates)
 mapBoundaries <- make_bbox(lon=MapCoordinates$lon,lat=MapCoordinates$lat,f=0.1)
 CalMap <- get_map(location=mapBoundaries,maptype="satellite",source="google")
-CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = alpha),size=1)+scale_colour_gradientn(colours=rainbow(4))
+CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = InvSimpson),size=1)+scale_colour_gradientn(colours=rainbow(4))
 CalMap
