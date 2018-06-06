@@ -139,10 +139,11 @@ for(sample in unique(otudata$UniqueID)){
 
 #Generate diversity metrics per sample.
 library("gambin")
-siteDiversity <- as.data.frame(matrix(NA,nrow=1,ncol=7))
-colnames(siteDiversity) <- c("UniqueID","gambinAlpha","Simpson","InvSimpson","nTaxa","Shannon","fisherAlpha")
-tmp2 <- as.data.frame(matrix(NA,nrow=1,ncol=7))
-colnames(tmp2) <- c("UniqueID","gambinAlpha","Simpson","InvSimpson","nTaxa","Shannon","fisherAlpha")
+library("sads")
+siteDiversity <- as.data.frame(matrix(NA,nrow=1,ncol=9))
+colnames(siteDiversity) <- c("UniqueID","gambinAlpha","Simpson","InvSimpson","nTaxa","Shannon","fisherAlpha","geomP","broken_stick_likelihood")
+tmp2 <- as.data.frame(matrix(NA,nrow=1,ncol=9))
+colnames(tmp2) <- c("UniqueID","gambinAlpha","Simpson","InvSimpson","nTaxa","Shannon","fisherAlpha","geomP","broken_stick_likelihood")
 for(sample in unique(otudata$UniqueID)){
   tmp1 <- subset(otudata,UniqueID==sample)
   tmp2$UniqueID <- sample
@@ -155,20 +156,26 @@ for(sample in unique(otudata$UniqueID)){
   RAD <- as.integer(colMeans(RAD+0.5,na.rm=TRUE))
   #To calculate the Gambin alpha parameter per sample
   tmp2$nTaxa <- nrow(tmp1)
-  if(sum(RAD)>=500){
+  if(sum(RAD)>=500 & nrow(tmp1) >= 12 & min(RAD) > 0){
     gambin_fit <- fit_abundances(RAD)
     tmp2$gambinAlpha <- gambin_fit$alpha
     tmp2$Simpson <- diversity(RAD,index="simpson")
     tmp2$InvSimpson <- diversity(RAD,index="invsimpson")
     tmp2$Shannon <- diversity(RAD,index="shannon")
     tmp2$fisherAlpha <- fisher.alpha(RAD)
+    geom_fit <- fitdist(RAD, distr ="geom")
+    tmp2$geomP <- geom_fit$estimate
+    broken_stick <- fitrad(RAD, rad="rbs")
+    tmp2$broken_stick_likelihood <- -broken_stick@details$value
   }
-  if(sum(RAD)<500){
+  else{
     tmp2$gambinAlpha <- NA
     tmp2$Simpson <- NA
     tmp2$InvSimpson <- NA
     tmp2$Shannon <- NA
     tmp2$fisherAlpha <- NA
+    tmp2$geomP <- NA
+    tmp2$broken_stick_likelihood <- NA
   }
   siteDiversity <- rbind(siteDiversity,tmp2)
   print(sample)
@@ -181,6 +188,8 @@ GISData$InvSimpson <- siteDiversity$InvSimpson
 GISData$nTaxa <- siteDiversity$nTaxa
 GISData$Shannon <- siteDiversity$Shannon
 GISData$fisherAlpha <- siteDiversity$fisherAlpha
+GISData$geomP <- siteDiversity$geomP
+GISData$broken_stick_likelihood <- siteDiversity$broken_stick_likelihood
 write.csv(GISData,file="CSCI.csv",row.names=FALSE)
 
 #Create Phyloseq object with the OTU table, sample factors, and taxonomic data.
@@ -201,7 +210,7 @@ physeq <- phyloseq(OTU,TAX,sampledata)
 
 #Subset Phyloseq object by various factors and perform basic PCA and beta diversity tests.
 test <- subset_samples(physeq, Year=="2000")
-#test <- subset_samples(test, LU_Decile==1)
+test <- subset_samples(test, LU_Decile==9)
 #test <- transform_sample_counts(test, function(x) x/sum(x))
 #test<-tax_glom(test,taxrank=rank_names(test)[4],NArm=TRUE,bad_empty=NA)
 Dist = distance(test, method = "morisita")
@@ -234,17 +243,32 @@ distmat$SpatialDistance <- as.numeric(distmat$SpatialDistance)
 library(Hmisc)
 library(corrplot)
 library("PerformanceAnalytics")
-chart.Correlation(GISData[,c("LU_2000_5K","altitude","nTaxa","Simpson","InvSimpson","gambinAlpha","fisherAlpha","Shannon","CSCI")], histogram=TRUE, method="spearman")
+chart.Correlation(GISData[,c("LU_2000_5K","altitude","nTaxa","Simpson","InvSimpson","gambinAlpha","fisherAlpha","Shannon","CSCI","geomP","broken_stick_likelihood")], histogram=FALSE, method="spearman")
+chart.Correlation(GISData[,c("LU_2000_5K","altitude","nTaxa","CSCI")], histogram=FALSE, method="spearman")
+chart.Correlation(GISData[,c("LU_2000_5K","gambinAlpha","CSCI")], histogram=FALSE, method="spearman")
 
 #Generate map of data for a given chemical parameter in California.
 library(ggmap)
 library(maps)
 library(mapdata)
 dev.off()
-MapCoordinates <- data.frame(GISData$LU_2000_5K,GISData$gambinAlpha,GISData$Simpson,GISData$InvSimpson,GISData$nTaxa,GISData$Shannon,GISData$CSCI,GISData$altitude,GISData$Longitude,GISData$Latitude)
-colnames(MapCoordinates) = c("LU_2000_5K","gambinAlpha","Simpson","InvSimpson","nTaxa","Shannon","CSCI",'alt','lon','lat')
+MapCoordinates <- data.frame(GISData$LU_2000_5K,GISData$gambinAlpha,GISData$fisherAlpha,GISData$Simpson,GISData$InvSimpson,GISData$nTaxa,GISData$Shannon,GISData$CSCI,GISData$geomP,GISData$altitude,GISData$Longitude,GISData$Latitude)
+colnames(MapCoordinates) = c("LU_2000_5K","gambinAlpha","fisherAlpha","Simpson","InvSimpson","nTaxa","Shannon","CSCI","geomP",'alt','lon','lat')
 MapCoordinates <- na.omit(MapCoordinates)
 mapBoundaries <- make_bbox(lon=MapCoordinates$lon,lat=MapCoordinates$lat,f=0.1)
 CalMap <- get_map(location=mapBoundaries,maptype="satellite",source="google")
-CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = InvSimpson),size=1)+scale_colour_gradientn(colours=rainbow(4))
+CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = gambinAlpha),size=1)+scale_colour_gradientn(colours=rainbow(4))
 CalMap
+
+
+library(devtools)
+library(SpiecEasi)
+library(phyloseq)
+library(seqtime)
+library(igraph)
+library(network)
+library(stringr)
+spiec.out=spiec.easi(test, method="mb",icov.select.params=list(rep.num=20))
+spiec.graph=adj2igraph(spiec.out$refit, vertex.attr=list(name=taxa_names(test)))
+plot_network(spiec.graph, test, type='TAX', color="Red", label=NULL)
+betaMat=as.matrix(symBeta(getOptBeta(spiec.out)))
