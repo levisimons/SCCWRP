@@ -148,6 +148,8 @@ for(networkFile in networkfiles){
   if(ecount(networkgraph)>0){
     #Get the full weighted adjacency matrix.
     networkmatrix <- as.matrix(get.adjacency(networkgraph,attr='weight'))
+    #Mean interaction strength
+    meanStrength <- mean(abs(networkmatrix))
     #Get the eigenvalues of the full weighted adjacency matrix.
     lambda_network <- eigen(networkmatrix)
     #Get the real component first eigenvalue.
@@ -165,6 +167,20 @@ for(networkFile in networkfiles){
     networkmatrix[upper.tri(networkmatrix)] <- 0
     networkmatrix <- ifelse(networkmatrix!=0,1,networkmatrix)
     zeta <- mean(colSums(networkmatrix)^2)/mean(colSums(networkmatrix))^2
+    #Calculate modularity
+    networkModularity <- modularity(cluster_edge_betweenness(networkgraph, weights=NULL,directed=FALSE))
+    M <- networkModularity
+    networkNodecount <-network.size(as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency"))
+    # Get the number of unique network edges
+    networkEdgecount <- network.edgecount(as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency"))
+    # Get the number of nodes
+    networkNodecount <- network.size(as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency"))
+    # Get the average degree per node.
+    k <- (2*networkEdgecount)/networkNodecount
+    # Calculate the modularity of the random network.
+    networkRandModularity <- (1-(2/sqrt(networkNodecount)))*(2/k)^(2/3)
+    # Calculate the log ratio of the modularities.
+    l_rM <- log(networkModularity/networkRandModularity)
   }
   #Filter contravariant network data based on local similarity scores.
   networkdataCon <- subset(networkdata,networkdata$weight<0)
@@ -178,6 +194,8 @@ for(networkFile in networkfiles){
   if(ecount(networkgraphCon)>0){
     #Get the full weighted adjacency matrix.
     networkmatrix <- as.matrix(get.adjacency(networkgraphCon,attr='weight'))
+    #Mean interaction strength
+    meanStrength_Con <- mean(abs(networkmatrix))
     #Get the eigenvalues of the full weighted adjacency matrix.
     lambda_network <- eigen(networkmatrix)
     #Get the real component first eigenvalue.
@@ -196,6 +214,13 @@ for(networkFile in networkfiles){
     networkmatrixCon[upper.tri(networkmatrixCon)] <- 0
     networkmatrixCon <- ifelse(networkmatrixCon!=0,1,networkmatrixCon)
     zeta_Con <- mean(colSums(networkmatrixCon)^2)/mean(colSums(networkmatrixCon))^2
+    #Calculate the degree heterogeneity of the corresponding random network.
+    randnetworkmatrixCon <- randnetworkmatrix
+    randnetworkmatrixCon[upper.tri(randnetworkmatrixCon)] <- 0
+    randnetworkmatrixCon <- ifelse(randnetworkmatrixCon!=0,1,randnetworkmatrixCon)
+    zeta_rand_Con <- mean(colSums(randnetworkmatrixCon)^2)/mean(colSums(randnetworkmatrixCon))^2
+    # Log response ratio of degree heterogeneity.
+    l_con_rzeta <- log(zeta_Con/zeta_rand_Con)
     # Generate adjacency matrix of relative taxa abundance correlations
     adj= as.network(get.adjacency(networkgraphCon,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
     # Get the number of unique network edges
@@ -244,6 +269,8 @@ for(networkFile in networkfiles){
   if(ecount(networkgraph)>0){
     #Get the full weighted adjacency matrix.
     networkmatrix <- as.matrix(get.adjacency(networkgraphCov,attr='weight'))
+    #Mean interaction strength
+    meanStrength_Cov <- mean(abs(networkmatrix))
     #Get the eigenvalues of the full weighted adjacency matrix.
     lambda_network <- eigen(networkmatrix)
     #Get the real component first eigenvalue.
@@ -262,6 +289,13 @@ for(networkFile in networkfiles){
     networkmatrixCov[upper.tri(networkmatrixCov)] <- 0
     networkmatrixCov <- ifelse(networkmatrixCov!=0,1,networkmatrixCov)
     zeta_Cov <- mean(colSums(networkmatrixCov)^2)/mean(colSums(networkmatrixCov))^2
+    #Calculate the degree heterogeneity of the corresponding random network.
+    randnetworkmatrixCov <- randnetworkmatrix
+    randnetworkmatrixCov[upper.tri(randnetworkmatrixCov)] <- 0
+    randnetworkmatrixCov <- ifelse(randnetworkmatrixCov!=0,1,randnetworkmatrixCov)
+    zeta_rand_Cov <- mean(colSums(randnetworkmatrixCov)^2)/mean(colSums(randnetworkmatrixCov))^2
+    # Log response ratio of degree heterogeneity.
+    l_cov_rzeta <- log(zeta_Cov/zeta_rand_Cov)
     # Generate adjacency matrix of relative taxa abundance correlations
     adj= as.network(get.adjacency(networkgraphCov,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
     # Get the number of unique network edges
@@ -329,45 +363,101 @@ for(networkFile in networkfiles){
   dat[1,28] <- lambda_rand_m
   dat[1,29] <- lambda_rand_Con
   dat[1,30] <- lambda_rand_Cov
+  dat[1,31] <- M
+  dat[1,32] <- l_rM
+  dat[1,33] <- meanStrength
+  dat[1,34] <- meanStrength_Cov
+  dat[1,35] <- meanStrength_Con
+  dat[1,36] <- zeta_rand_Con
+  dat[1,37] <- l_con_rzeta
+  dat[1,38] <- zeta_rand_Cov
+  dat[1,39] <- l_cov_rzeta
   networkAnalysis <- rbind(networkAnalysis,dat)
-  print(paste(networkFile,meanLU,l_con_rL,l_con_rCl,l_con_rM,l_cov_rL,l_cov_rCl,l_cov_rM,lambda_network_m,con_L,con_Cl,con_M,cov_L,cov_Cl,cov_M,zeta,con_C,cov_C,Network_size,Pm,lambda_network_m_Con,lambda_network_m_Cov,zeta_Con,zeta_Cov,gamma_Con,gamma_Cov,gamma,lambda_rand_m,lambda_rand_Con,lambda_rand_Cov))
+  print(paste(networkFile,meanLU,l_con_rL,l_con_rCl,l_con_rM,l_cov_rL,l_cov_rCl,l_cov_rM,lambda_network_m,con_L,con_Cl,con_M,cov_L,cov_Cl,cov_M,zeta,con_C,cov_C,Network_size,Pm,lambda_network_m_Con,lambda_network_m_Cov,zeta_Con,zeta_Cov,gamma_Con,gamma_Cov,gamma,lambda_rand_m,lambda_rand_Con,lambda_rand_Cov,M,l_rM,meanStrength,meanStrength_Cov,meanStrength_Con,zeta_rand_Con,l_con_rzeta,zeta_rand_Cov,l_cov_rzeta))
 }
-colnames(networkAnalysis) <- c("filename","meanLU","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","lambda_network_m","con_L","con_Cl","con_M","cov_L","cov_Cl","cov_M","zeta","con_C","cov_C","Network_size","Pm","lambda_network_m_Con","lambda_network_m_Cov","zeta_Con","zeta_Cov","gamma_Con","gamma_Cov","gamma","lambda_rand_m","lambda_rand_Con","lambda_rand_Cov")
+colnames(networkAnalysis) <- c("filename","meanLU","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","lambda_network_m","con_L","con_Cl","con_M","cov_L","cov_Cl","cov_M","zeta","con_C","cov_C","Network_size","Pm","lambda_network_m_Con","lambda_network_m_Cov","zeta_Con","zeta_Cov","gamma_Con","gamma_Cov","gamma","lambda_rand_m","lambda_rand_Con","lambda_rand_Cov","M","l_rM","meanStrength","meanStrength_Cov","meanStrength_Con","zeta_rand_Con","l_con_rzeta","zeta_rand_Cov","l_cov_rzeta")
 networkAnalysis[networkAnalysis=="-Inf"] <- NA
 networkAnalysis[networkAnalysis=="Inf"] <- NA
 networkAnalysis <- arrange(networkAnalysis,meanLU)
-#write.table(networkAnalysis,"CSCISiteSweepCA.txt",quote=FALSE,sep="\t",row.names = FALSE)
+write.table(networkAnalysis,"LU_2000_5KSiteSweepCA.txt",quote=FALSE,sep="\t",row.names = FALSE)
+networkAnalysis <- read.table("LU_2000_5KSiteSweepCA.txt",header=TRUE)
+
+## Scratchpaper code for generating network graphs for publications
+dev.off()
+#networkFile <- "LUSweepCA83Samples167to249S15R12M0Network.txt"
+networkFile <- "LUSweepCA83Samples4898to4980S18R11M99.9645381407207Network.txt"
+networkdata <- read.delim(networkFile,header=TRUE, sep="\t",as.is=T,check.names=FALSE)
+networkdata <- filter(networkdata, P <= 1e-4)
+networkdata <- filter(networkdata, Q <= 1e-4)
+names(networkdata)[names(networkdata)=="LS"]<-"weight"
+networkdataCon <- subset(networkdata,networkdata$weight<0)
+networkgraphCon=graph.data.frame(networkdataCon,directed=FALSE)
+networkNodecount <-network.size(as.network(get.adjacency(networkgraphCon,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency"))
+networkEdgecount <- network.edgecount(as.network(get.adjacency(networkgraphCon,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency"))
+modularity(cluster_edge_betweenness(networkgraphCon, weights=NULL,directed=FALSE))
+hist(degree(networkgraphCon),xlab="Node degree",main="Degree distribution",breaks=max(degree(networkgraphCon)))
+png(filename=paste(networkFile,"Nodes",networkNodecount,"Edges",networkEdgecount,"Con.png",sep=""))
+plot(networkgraphCon,vertex.label=NA,vertex.size=4,edge.width=-10*E(networkgraphCon)$weight, layout=layout_nicely(networkgraphCon))
+dev.off()
+png(filename=paste(networkFile,"Nodes",networkNodecount,"Edges",networkEdgecount,"ConRandom.png",sep=""))
+plot(erdos.renyi.game(networkNodecount,networkEdgecount,type="gnm"),vertex.label=NA,vertex.size=4,edge.width=-10*E(networkgraphCon)$weight, layout=layout_nicely(erdos.renyi.game(networkNodecount,networkEdgecount,type="gnm")))
+dev.off()
+hist(degree(erdos.renyi.game(networkNodecount,networkEdgecount,type="gnm")),xlab="Node degree",main="Degree distribution",breaks=max(degree(erdos.renyi.game(networkNodecount,networkEdgecount,type="gnm"))))
+networkdataCov <- subset(networkdata,networkdata$weight>0)
+networkgraphCov=graph.data.frame(networkdataCov,directed=FALSE)
+networkNodecount <-network.size(as.network(get.adjacency(networkgraphCov,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency"))
+networkEdgecount <- network.edgecount(as.network(get.adjacency(networkgraphCov,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency"))
+modularity(cluster_edge_betweenness(networkgraphCov, weights=NULL,directed=FALSE))
+png(filename=paste(networkFile,"Nodes",networkNodecount,"Edges",networkEdgecount,"Cov.png",sep=""))
+plot(networkgraphCov,vertex.label=NA,vertex.size=4,edge.width=10*E(networkgraphCov)$weight, layout=layout_nicely(networkgraphCov))
+dev.off()
+png(filename=paste(networkFile,"Nodes",networkNodecount,"Edges",networkEdgecount,"CovRandom.png",sep=""))
+plot(erdos.renyi.game(networkNodecount,networkEdgecount,type="gnm"),vertex.label=NA,vertex.size=4,edge.width=10*E(networkgraphCov)$weight, layout=layout_nicely(erdos.renyi.game(networkNodecount,networkEdgecount,type="gnm")))
+dev.off()
+hist(degree(erdos.renyi.game(networkNodecount,networkEdgecount,type="gnm")),xlab="Node degree",main="Degree distribution",breaks=max(degree(erdos.renyi.game(networkNodecount,networkEdgecount,type="gnm"))))
+
+## Sample code to generate an example of a highly modular network
+modularExample <- graph.data.frame(read.delim("ModularExample1.csv",header=TRUE, sep=",",as.is=T,check.names=FALSE),direct=FALSE)
+plot(modularExample,vertex.label=NA,vertex.size=4,directed=FALSE,loops=FALSE,layout=layout_nicely(modularExample))
+modularity(cluster_edge_betweenness(modularExample, weights=NULL,directed=FALSE))
 
 #Regression between network parameters.
 library(Hmisc)
-res2<-rcorr(as.matrix(networkAnalysis[,-c(1)]),type="spearman")
 library(corrplot)
-#Correlation plot.  Insignificant correlations are leaved blank.
-corrplot(res2$r, type="upper", order="hclust", p.mat = res2$P, sig.level = 0.01, insig = "blank")
 library("PerformanceAnalytics")
+res2<-rcorr(as.matrix(networkAnalysis[,-c(1)]),type="spearman")
+res2<-rcorr(as.matrix(networkAnalysis[,c("meanLU","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","lambda_network_m","zeta","con_C","cov_C","Network_size","Pm","lambda_network_m_Con","lambda_network_m_Cov","zeta_Con","zeta_Cov","l_rM")]),type="spearman")
+#Correlation plot.  Insignificant correlations are leaved blank.
+corrplot(res2$r, type="upper", order="hclust", p.mat = res2$P, sig.level = 0.0001, insig = "blank")
 #Each significance level is associated to a symbol : p-values(0, 0.001, 0.01, 0.05, 0.1, 1) <=> symbols(“***”, “**”, “*”, “.”, " “)
-chart.Correlation(networkAnalysis[,-c(1)], histogram=TRUE, method="spearman")
-chart.Correlation(networkAnalysis[,c("zeta","lambda_network_m")], histogram=TRUE, method="spearman")
-chart.Correlation(networkAnalysis[,c("l_cov_rM","lambda_network_m_Cov")], histogram=TRUE, method="spearman")
-chart.Correlation(networkAnalysis[,c("l_con_rM","lambda_network_m_Con")], histogram=TRUE, method="spearman")
-chart.Correlation(networkAnalysis[,c("cov_C","lambda_network_m_Cov")], histogram=TRUE, method="spearman")
-chart.Correlation(networkAnalysis[,c("con_C","lambda_network_m_Con")], histogram=TRUE, method="spearman")
-chart.Correlation(networkAnalysis[,c("Pm","lambda_network_m")], histogram=TRUE, method="spearman")
-chart.Correlation(networkAnalysis[,c("meanLU","l_con_rL")], histogram=TRUE, method="spearman")
-chart.Correlation(networkAnalysis[,c("meanLU","l_cov_rL")], histogram=TRUE, method="spearman")
-chart.Correlation(networkAnalysis[,c("meanLU","l_con_rM")], histogram=TRUE, method="spearman")
-chart.Correlation(networkAnalysis[,c("meanLU","l_cov_rM")], histogram=TRUE, method="spearman")
-chart.Correlation(networkAnalysis[,c("meanLU","zeta","l_cov_rM","l_con_rM")], histogram=TRUE, method="spearman")
+chart.Correlation(networkAnalysis[,-c(1)], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("zeta","lambda_network_m")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("l_cov_rM","lambda_network_m_Cov")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("l_con_rM","lambda_network_m_Con")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("cov_C","lambda_network_m_Cov")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("con_C","lambda_network_m_Con")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("Pm","lambda_network_m")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanLU","l_con_rL")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanLU","l_cov_rL")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanLU","l_con_rM")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanLU","l_cov_rM")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanLU","lambda_network_m","meanStrength","zeta","l_rM")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanLU","meanStrength","zeta","lambda_network_m","l_rM","Network_size")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanLU","meanStrength_Con","zeta_Con","lambda_network_m_Con","l_con_rM")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanLU","meanStrength_Cov","zeta_Cov","lambda_network_m_Cov","l_cov_rM")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanLU","zeta_Cov","zeta_rand_Cov","l_cov_rzeta","lambda_network_m_Cov","Network_size")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanLU","zeta_Con","zeta_rand_Con","l_con_rzeta","lambda_network_m_Con","Network_size")], histogram=FALSE, method="spearman")
 
 #To generate map of data for a given environmental parameter in California.
 library(ggmap)
 library(maps)
 library(mapdata)
+library(munsell)
 dev.off()
 MapCoordinates <- data.frame(GISBioData$LU_2000_5K,GISBioData$Longitude,GISBioData$Latitude)
 colnames(MapCoordinates) = c('LU','lon','lat')
 MapCoordinates <- na.omit(MapCoordinates)
 mapBoundaries <- make_bbox(lon=MapCoordinates$lon,lat=MapCoordinates$lat,f=0.1)
 CalMap <- get_map(location=mapBoundaries,maptype="satellite",source="google")
-CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = LU))
+CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = LU))+scale_colour_gradient(low = "green", high = "red", space = "Lab", na.value = "grey50", guide = "colourbar")
 CalMap
