@@ -463,11 +463,19 @@ plot(networkAnalysis$meanLU, -1*networkAnalysis$lambda_network_m_Cov, type='p', 
 lines(smooth.spline(networkAnalysis$meanLU,-1*networkAnalysis$lambda_network_m_Cov,df=3),col="blue")
 par(new=F)
 
-#Code for looking at changes in land use types over time.
+#Code for looking at a histogram of land use types and cover by sample.
 dev.off()
 require(plotrix)
 LUhist <- multhist(list(SCCWRP$Ag_2000_5K,SCCWRP$URBAN_2000_5K,SCCWRP$CODE_21_2000_5K),plot=TRUE, ylim=c(0,5000),xlab="Land use cover %", ylab="Number of samples", main="Samples by land use cover %",col=c("green", "red","blue"),breaks=seq(0,100, by=10))
-legend("top",c("Agricultural","Urban","Managed\nlandscapes"),col=c("green","red","blue"),lwd=10,text.width = 12)
+dev.off()
+plot(x=LUhist[[1]][["mids"]],y=log10(LUhist[[2]][1,]+1),type='o',lwd=4,col="green",xlab="Land Use % cover",ylab="Log(Stream Samples)",main="Log samples by land use cover %",xlim=c(0,100),ylim=c(0,4))
+par(new=T)
+plot(x=LUhist[[1]][["mids"]],y=log10(LUhist[[2]][2,]+1),type='o',lwd=4,col="red",xlab="Land Use % cover",ylab="Log(Stream Samples)",main="Log samples by land use cover %",xlim=c(0,100),ylim=c(0,4))
+par(new=T)
+plot(x=LUhist[[1]][["mids"]],y=log10(LUhist[[2]][3,]+1),type='o',lwd=4,col="blue",xlab="Land Use % cover",ylab="Log(Stream Samples)",main="Log samples by land use cover %",xlim=c(0,100),ylim=c(0,4))
+legend("topright",c("Agricultural","Urban","Managed\nlandscapes"),col=c("green","red","blue"),lwd=10,text.width = 30)
+
+
 
 #Regression between network parameters.
 library(Hmisc)
