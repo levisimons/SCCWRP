@@ -137,8 +137,8 @@ for(networkFile in networkfiles){
   networkdata <- read.delim(networkFile,header=TRUE, sep="\t",as.is=T,check.names=FALSE)
   #Filter out association network data based on P and Q scores, for the local similarity
   #between two factors, with values less than a particuar threshold.
-  networkdata <- filter(networkdata, P <= 1e-5)
-  networkdata <- filter(networkdata, Q <= 1e-5)
+  networkdata <- filter(networkdata, P <= 1e-4)
+  networkdata <- filter(networkdata, Q <= 1e-4)
   names(networkdata)[names(networkdata)=="LS"]<-"weight"
   #networkdata <- filter(networkdata,abs(weight)>=0.3)
   meanLU <- as.numeric(str_match(networkFile,"M(.*?)Network")[2])
@@ -466,16 +466,14 @@ par(new=F)
 #Code for looking at a histogram of land use types and cover by sample.
 dev.off()
 require(plotrix)
-LUhist <- multhist(list(SCCWRP$Ag_2000_5K,SCCWRP$URBAN_2000_5K,SCCWRP$CODE_21_2000_5K),plot=TRUE, ylim=c(0,5000),xlab="Land use cover %", ylab="Number of samples", main="Samples by land use cover %",col=c("green", "red","blue"),breaks=seq(0,100, by=10))
+LUhist <- multhist(list(SCCWRP$Ag_2000_5K,SCCWRP$URBAN_2000_5K,SCCWRP$CODE_21_2000_5K),plot=TRUE, ylim=c(0,5000),xlab="Land use cover %", ylab="Number of samples", main="Samples by land use cover %",col=c("green", "red","blue"),breaks=seq(0,100, by=1.6666666666667))
 dev.off()
 plot(x=LUhist[[1]][["mids"]],y=log10(LUhist[[2]][1,]+1),type='o',lwd=4,col="green",xlab="Land Use % cover",ylab="Log(Stream Samples)",main="Log samples by land use cover %",xlim=c(0,100),ylim=c(0,4))
 par(new=T)
 plot(x=LUhist[[1]][["mids"]],y=log10(LUhist[[2]][2,]+1),type='o',lwd=4,col="red",xlab="Land Use % cover",ylab="Log(Stream Samples)",main="Log samples by land use cover %",xlim=c(0,100),ylim=c(0,4))
 par(new=T)
 plot(x=LUhist[[1]][["mids"]],y=log10(LUhist[[2]][3,]+1),type='o',lwd=4,col="blue",xlab="Land Use % cover",ylab="Log(Stream Samples)",main="Log samples by land use cover %",xlim=c(0,100),ylim=c(0,4))
-legend("topright",c("Agricultural","Urban","Managed\nlandscapes"),col=c("green","red","blue"),lwd=10,text.width = 30)
-
-
+legend("topright",c("Agricultural","Urban","Managed\nlandscapes"),col=c("green","red","blue"),lwd=10,text.width = 30, pt.cex=1,cex=1,ncol=2)
 
 #Regression between network parameters.
 library(Hmisc)
@@ -514,9 +512,52 @@ dev.off()
 MapCoordinates <- data.frame(SCCWRP$LU,SCCWRP$Longitude,SCCWRP$Latitude)
 colnames(MapCoordinates) = c('LU','lon','lat')
 MapCoordinates <- na.omit(MapCoordinates)
-mapBoundaries <- make_bbox(lon=MapCoordinates$lon,lat=MapCoordinates$lat,f=0.1)
+#mapBoundaries <- make_bbox(lon=MapCoordinates$lon,lat=MapCoordinates$lat,f=0.1)
 CalMap <- scale_x_continuous(limits=c(31,41))
-CalMap <- get_map(location="Fresno",maptype="satellite",source="google",zoom=6)
-CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = LU))+scale_colour_gradient(low = "green", high = "red", space = "Lab", na.value = "grey50", guide = "colourbar")+ theme(legend.position="top")
+CalMap <- get_map(location="93650",maptype="satellite",source="google",zoom=6)
+CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = LU), size=0.5, show.legend=NA)+scale_colour_gradient(low = "green", high = "red", space = "Lab", na.value = "grey50", guide = "colourbar")+ theme(legend.position="top")
 #CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color=Watershed))+ theme(legend.position="none")
 CalMap
+
+# Code to check how frequently taxa within the same functional feeding group have
+# covariant or contravariant co-occurrence correlations.
+functionalMatch <- data.frame()
+# Read in SCCWRP metadata.
+metadata <- read.table("metadata.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+# Filter data so only known functional feeding groups are kept.
+metadata <- subset(metadata, FunctionalFeedingGroup != "")
+# Generate functional feeding group data frame.
+FFG <- metadata[,c("FinalID","LifeStageCode","FunctionalFeedingGroup")]
+FFG <- subset(FFG,LifeStageCode=="L" | LifeStageCode=="X" | FinalID=="Hydrophilidae" | FinalID=="Hydraenidae")
+# Sweep through all networks.
+networkfiles <- Sys.glob("LUSweepCA83Samples*Network.txt")
+for(networkFile in networkfiles){
+  networkdata <- read.delim(networkFile,header=TRUE, sep="\t",as.is=T,check.names=FALSE)
+  #Filter out association network data based on P and Q scores, for the local similarity
+  #between two factors, with values less than a particuar threshold.
+  networkdata <- filter(networkdata, P <= 1e-4)
+  networkdata <- filter(networkdata, Q <= 1e-4)
+  names(networkdata)[names(networkdata)=="LS"]<-"weight"
+  tmp2 <- data.frame()
+  tmp2[1,1] <- meanLU <- as.numeric(str_match(networkFile,"M(.*?)Network")[2])
+  # Add functional feeding groups to each taxon in a known taxa co-occurrence pair.
+  tmp1 <- FFG
+  colnames(tmp1) <- c("X","Xlsc","Xffg")
+  networkdata <- join(networkdata,tmp1)
+  networkdata <- networkdata[!duplicated(networkdata[c("X","Y","weight","Xffg")]),]
+  tmp1 <- FFG
+  colnames(tmp1) <- c("Y","Ylsc","Yffg")
+  networkdata <- join(networkdata,tmp1)
+  networkdata <- networkdata[!duplicated(networkdata[c("X","Y","weight","Xffg")]),]
+  networkdata$FFGMatch <- ifelse(networkdata$Xffg==networkdata$Yffg,1,0)
+  networkdata <- networkdata[!is.na(networkdata$FFGMatch),]
+  networkdataCon <- subset(networkdata,weight<0)
+  tmp2[1,2] <- contravariantMatch <- sum(networkdataCon$FFGMatch)/nrow(networkdataCon)
+  tmp2[1,3] <- contravariantMismatch <- 1.0-contravariantMatch
+  networkdataCov <- subset(networkdata,weight>0)
+  tmp2[1,4] <- covariantMatch <- sum(networkdataCov$FFGMatch)/nrow(networkdataCov)
+  tmp2[1,5] <- covariantMismatch <- 1.0-covariantMatch
+  print(paste(meanLU,nrow(networkdataCon),contravariantMatch,contravariantMismatch,nrow(networkdataCov),covariantMatch,covariantMismatch))
+  functionalMatch <- rbind(functionalMatch,tmp2)
+}
+colnames(functionalMatch) <- c("meanLU","PercentContravariantMatches","PercentContravariantMismatches","PercentCovariantMatches","PercentCovariantMismatches")
