@@ -15,18 +15,18 @@ setwd("~/Desktop/SCCWRP")
 #to generate it in the first place.
 GISBioData <- read.table("CAGISBioData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
 #Add year column.
-GISBioData$Year <- year(mdy(GISBioData$SampleDate))
+#GISBioData$Year <- year(mdy(GISBioData$SampleDate))
 #Ensure that all sites have a LU_2000_5K value.
-GISBioData <- subset(GISBioData, LU_2000_5K != "NA")
+#GISBioData <- subset(GISBioData, LU_2000_5K != "NA")
 #Order data by LU_2000_5K.
-GISBioData <- arrange(GISBioData,LU_2000_5K)
+#GISBioData <- arrange(GISBioData,LU_2000_5K)
 #Read in sample metadata.
 SCCWRP <- read.table("CSCI.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
 
 #Merge watershed names onto biological count data.
-GISBioData <- join(GISBioData,SCCWRP[,c("Watershed","UniqueID")],by=c("UniqueID"))
+#GISBioData <- join(GISBioData,SCCWRP[,c("Watershed","UniqueID")],by=c("UniqueID"))
 #Remove data without watershed information.
-GISBioData <- subset(GISBioData,Watershed != "NA")
+#GISBioData <- subset(GISBioData,Watershed != "NA")
 
 #Run through analysis on SCCWRP archive on a watershed-level scale.
 watersheds = unique(GISBioData$Watershed)
@@ -379,13 +379,36 @@ for(networkFile in networkfiles){
   dat[1,37] <- l_con_rzeta
   dat[1,38] <- zeta_rand_Cov
   dat[1,39] <- l_cov_rzeta
+  dat[1,40] <- Watershed <- str_extract(str_match(networkFile,"CAWatershed(.*?)Samples")[2],"\\D+")
   networkAnalysis <- rbind(networkAnalysis,dat)
-  print(paste(networkFile,meanLU,l_con_rL,l_con_rCl,l_con_rM,l_cov_rL,l_cov_rCl,l_cov_rM,lambda_network_m,con_L,con_Cl,con_M,cov_L,cov_Cl,cov_M,zeta,con_C,cov_C,Network_size,Pm,lambda_network_m_Con,lambda_network_m_Cov,zeta_Con,zeta_Cov,gamma_Con,gamma_Cov,gamma,lambda_rand_m,lambda_rand_Con,lambda_rand_Cov,M,l_rM,meanStrength,meanStrength_Cov,meanStrength_Con,zeta_rand_Con,l_con_rzeta,zeta_rand_Cov,l_cov_rzeta))
+  print(paste(networkFile,meanLU,l_con_rL,l_con_rCl,l_con_rM,l_cov_rL,l_cov_rCl,l_cov_rM,lambda_network_m,con_L,con_Cl,con_M,cov_L,cov_Cl,cov_M,zeta,con_C,cov_C,Network_size,Pm,lambda_network_m_Con,lambda_network_m_Cov,zeta_Con,zeta_Cov,gamma_Con,gamma_Cov,gamma,lambda_rand_m,lambda_rand_Con,lambda_rand_Cov,M,l_rM,meanStrength,meanStrength_Cov,meanStrength_Con,zeta_rand_Con,l_con_rzeta,zeta_rand_Cov,l_cov_rzeta,Watershed))
 }
-colnames(networkAnalysis) <- c("filename","meanLU","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","lambda_network_m","con_L","con_Cl","con_M","cov_L","cov_Cl","cov_M","zeta","con_C","cov_C","Network_size","Pm","lambda_network_m_Con","lambda_network_m_Cov","zeta_Con","zeta_Cov","gamma_Con","gamma_Cov","gamma","lambda_rand_m","lambda_rand_Con","lambda_rand_Cov","M","l_rM","meanStrength","meanStrength_Cov","meanStrength_Con","zeta_rand_Con","l_con_rzeta","zeta_rand_Cov","l_cov_rzeta")
+colnames(networkAnalysis) <- c("filename","meanLU","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","lambda_network_m","con_L","con_Cl","con_M","cov_L","cov_Cl","cov_M","zeta","con_C","cov_C","Network_size","Pm","lambda_network_m_Con","lambda_network_m_Cov","zeta_Con","zeta_Cov","gamma_Con","gamma_Cov","gamma","lambda_rand_m","lambda_rand_Con","lambda_rand_Cov","M","l_rM","meanStrength","meanStrength_Cov","meanStrength_Con","zeta_rand_Con","l_con_rzeta","zeta_rand_Cov","l_cov_rzeta","Watershed")
 networkAnalysis[networkAnalysis=="-Inf"] <- NA
 networkAnalysis[networkAnalysis=="Inf"] <- NA
 networkAnalysis <- arrange(networkAnalysis,meanLU)
+
+#Get median land use by regional watershed data.
+#Run through analysis on SCCWRP archive on a watershed-level scale.
+watersheds = unique(GISBioData$Watershed)
+tmp2 <- data.frame()
+for(WS in watersheds){
+  #Get samples per watershed.
+  GISBioDataSubset <- subset(GISBioData,Watershed==WS)
+  #Determine the average LU_2000_5K per subsample of sites.
+  medianLU_2000_5K = median(na.omit(GISBioDataSubset$LU_2000_5K))
+  meanLU_2000_5K = mean(na.omit(GISBioDataSubset$LU_2000_5K))
+  tmp1 <- data.frame()
+  tmp1[1,1] <- gsub(" ","",WS,fixed=TRUE)
+  tmp1[1,2] <- unique(medianLU_2000_5K)
+  tmp1[1,3] <- unique(meanLU_2000_5K)
+  tmp2 <- rbind(tmp2,tmp1)
+}
+colnames(tmp2) <- c("Watershed","medianLU","meanLU")
+
+#Fuse the median land use data back into the network analysis data frame.
+networkAnalysis <- join(networkAnalysis,tmp2[,c("Watershed","medianLU")],by=c("Watershed"))
+
 write.table(networkAnalysis,"LU_2000_5KWatershedSweepCA.txt",quote=FALSE,sep="\t",row.names = FALSE)
 
 #Regression between network parameters.
@@ -393,7 +416,7 @@ library(Hmisc)
 library(corrplot)
 library("PerformanceAnalytics")
 #Each significance level is associated to a symbol : p-values(0, 0.001, 0.01, 0.05, 0.1, 1) <=> symbols(“***”, “**”, “*”, “.”, " “)
-chart.Correlation(networkAnalysis[,c("meanLU","zeta_Cov","l_cov_rM","cov_C","meanStrength_Cov","lambda_network_m_Cov","Network_size")], histogram=FALSE, method="spearman")
-chart.Correlation(networkAnalysis[,c("meanLU","zeta_Con","l_con_rM","con_C","meanStrength_Con","lambda_network_m_Con","Network_size")], histogram=FALSE, method="spearman")
-chart.Correlation(networkAnalysis[,c("meanLU","zeta","l_rM","lambda_network_m","Network_size")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanLU","medianLU","zeta_Cov","l_cov_rM","cov_C","meanStrength_Cov","lambda_network_m_Cov","Network_size")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanLU","medianLU","zeta_Con","l_con_rM","con_C","meanStrength_Con","lambda_network_m_Con","Network_size")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanLU","medianLU","zeta","l_rM","lambda_network_m","Network_size")], histogram=FALSE, method="spearman")
 
