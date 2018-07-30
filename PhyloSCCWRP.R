@@ -209,14 +209,26 @@ sampledata$LU_Decile <- as.numeric(as.character(sampledata$LU_Decile))
 physeq <- phyloseq(OTU,TAX,sampledata)
 
 #Subset Phyloseq object by various factors and perform basic PCA and beta diversity tests.
-test <- subset_samples(physeq, Year=="2000")
-test <- subset_samples(test, LU_Decile==9)
-#test <- transform_sample_counts(test, function(x) x/sum(x))
-#test<-tax_glom(test,taxrank=rank_names(test)[4],NArm=TRUE,bad_empty=NA)
-Dist = distance(test, method = "morisita")
-ord = ordinate(test, method = "PCoA", distance = Dist)
-plot_scree(ord, "Scree Plot: Bray-Curtis MDS")
+#Unique watershed regions:
+# "SMC_out"            "Ventura"            "SantaClara"         "SantaMonicaBay"    
+# "SanGabriel"         "Calleguas"          "LosAngeles"         "MiddleSantaAna"    
+# "UpperSantaAna"      "LowerSantaAna"      "SanJacinto"         "SanJuan"           
+# "NorthernSanDiego"   "CentralSanDiego"    "MissionBaySanDiego" "SouthernSanDiego"
+#physeqSubset <- subset_samples(physeq, SMCShed!="SMC_out")
+physeqSubset <- subset_samples(physeq)
+physeqSubset <- transform_sample_counts(physeqSubset, function(x) x/sum(x))
+plot_ordination(physeqSubset,ordinate(physeqSubset,"NMDS","bray"),color="Watershed")
+
+# Perform a PERMANOVA using a set number of permutations on a particular
+# beta diversity metric and the significance of a particular design variable.
+testDF = as(sample_data(physeqSubset), "data.frame")
+testAdonis = adonis(distance(physeqSubset,method="bray")~Year+Watershed+LU_2000_5K+altitude,data=testDF,permutations = 1000)
+testAdonis
+
 #Plot beta diversity.
+Dist = distance(physeqSubset, method = "bray")
+ord = ordinate(physeqSubset, method = "PCoA", distance = Dist)
+plot_scree(ord, "Scree Plot: Bray-Curtis MDS")
 levelplot(as.matrix(Dist))
 hist(as.vector(as.matrix(Dist)))
 
@@ -252,15 +264,16 @@ library(ggmap)
 library(maps)
 library(mapdata)
 dev.off()
-MapCoordinates <- data.frame(GISData$LU_2000_5K,GISData$gambinAlpha,GISData$fisherAlpha,GISData$Simpson,GISData$InvSimpson,GISData$nTaxa,GISData$Shannon,GISData$CSCI,GISData$geomP,GISData$altitude,GISData$Longitude,GISData$Latitude)
-colnames(MapCoordinates) = c("LU_2000_5K","gambinAlpha","fisherAlpha","Simpson","InvSimpson","nTaxa","Shannon","CSCI","geomP",'alt','lon','lat')
+MapCoordinates <- data.frame(GISData$LU_2000_5K,GISData$gambinAlpha,GISData$fisherAlpha,GISData$Simpson,GISData$InvSimpson,GISData$nTaxa,GISData$Shannon,GISData$CSCI,GISData$geomP,GISData$altitude,GISData$Longitude,GISData$Latitude,GISData$SMCShed)
+colnames(MapCoordinates) = c("LU_2000_5K","gambinAlpha","fisherAlpha","Simpson","InvSimpson","nTaxa","Shannon","CSCI","geomP",'alt','lon','lat','SMCShed')
 MapCoordinates <- na.omit(MapCoordinates)
 mapBoundaries <- make_bbox(lon=MapCoordinates$lon,lat=MapCoordinates$lat,f=0.1)
 CalMap <- get_map(location=mapBoundaries,maptype="satellite",source="google")
-CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = gambinAlpha),size=1)+scale_colour_gradientn(colours=rainbow(4))
+#CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = SMCShed),size=2)+scale_colour_gradientn(colours=rainbow(4))
+CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = SMCShed),size=2)
 CalMap
 
-
+# Spiec-Easi network analysis.
 library(devtools)
 library(SpiecEasi)
 library(phyloseq)
@@ -272,3 +285,13 @@ spiec.out=spiec.easi(test, method="mb",icov.select.params=list(rep.num=20))
 spiec.graph=adj2igraph(spiec.out$refit, vertex.attr=list(name=taxa_names(test)))
 plot_network(spiec.graph, test, type='TAX', color="Red", label=NULL)
 betaMat=as.matrix(symBeta(getOptBeta(spiec.out)))
+
+library(maptools)
+library(rgdal)
+library(sf)
+library(sp)
+library(maps)
+watersheds=readOGR("/Users/levisimons/Desktop/Data/wbdhu8_a_ca.shp")
+coordinates(GISData) <- c("Latitude","Longitude")
+inside.sheds <- !is.na(over(GISData, as(watersheds,"SpatialPolygons")))
+
