@@ -31,6 +31,9 @@ SCCWRP <- read.table("CSCI.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,c
 #Run through analysis on SCCWRP archive on a watershed-level scale.
 watersheds = unique(GISBioData$Watershed)
 
+#Initialize an empty gamma diversity data frame.
+gammaDiversity <- data.frame()
+
 for(WS in watersheds){
   #Get samples per watershed.
   GISBioDataSubset <- subset(GISBioData,Watershed==WS)
@@ -119,10 +122,28 @@ for(WS in watersheds){
   #Cut watersheds which have less than 40 samples.  A large enough set of samples is needed to
   #generaate a reasonably large co-occurrence network.
   if(sampleNum >= 40){
-    write.table(eLSAInput,paste(filename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
-    eLSACommand = paste("lsa_compute ",filename,".txt ","-r ",repNum," -s ",spotNum," ",filename,"Network.txt;",sep="")
+    #write.table(eLSAInput,paste(filename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
+    #eLSACommand = paste("lsa_compute ",filename,".txt ","-r ",repNum," -s ",spotNum," ",filename,"Network.txt;",sep="")
+    #Create a community matrix to determine gamma diversity.
+    #Gamma0 = sample group richness, Gamma1 = sample group Shannon index, Gamma2 = sample group inverse Simpson index.
+    abundances <- eLSAtmp[,-c(1)]
+    abundances[] <- lapply(abundances,gsub,pattern="NA",replacement=as.numeric(0),fixed=TRUE)
+    abundances <- as.data.frame(sapply(abundances,as.numeric))
+    abundances <- t(abundances)
+    gamma0 <- dz(abundances,lev="gamma",q=0)
+    gamma1 <- dz(abundances,lev="gamma",q=1)
+    gamma2 <- dz(abundances,lev="gamma",q=2)
+    print(paste(filename,gamma0,gamma1,gamma2))
+    dat <- data.frame()
+    dat[1,1] <- paste(filename,"Network.txt",sep="")
+    dat[1,2] <- gamma0
+    dat[1,3] <- gamma1
+    dat[1,4] <- gamma2
+    gammaDiversity <- rbind(gammaDiversity,dat)
   }
 }
+
+colnames(gammaDiversity) <- c("filename","gamma0","gamma1","gamma2")
 
 #Read in eLSA output.
 #Compute network statistics of the likeliest association networks between taxa.
@@ -410,6 +431,7 @@ colnames(tmp2) <- c("Watershed","medianLU","meanLU")
 networkAnalysis <- join(networkAnalysis,tmp2[,c("Watershed","medianLU")],by=c("Watershed"))
 
 write.table(networkAnalysis,"LU_2000_5KWatershedSweepCA.txt",quote=FALSE,sep="\t",row.names = FALSE)
+networkAnalysis <- read.table("LU_2000_5KWatershedSweepCA.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
 
 #Regression between network parameters.
 library(Hmisc)
