@@ -15,6 +15,8 @@ setwd("~/Desktop/SCCWRP")
 GISBioData <- read.table("CAGISBioData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
 #Ensure that all sites have a LU_2000_5K value.
 GISBioData <- subset(GISBioData, LU_2000_5K != "NA")
+#Filter out to taxonomic groups of interest.
+GISBioData <- subset(GISBioData, MeasurementType == "benthic macroinvertebrate relative abundance")
 #Order data by LU_2000_5K.
 GISBioData <- arrange(GISBioData,LU_2000_5K)
 
@@ -26,6 +28,9 @@ divisionNum = 60
 sampleNum <- as.integer(sitesNum/divisionNum)
 uniqueSamples <- as.data.frame(unique(GISBioData$UniqueID))
 colnames(uniqueSamples) <- c("UniqueID")
+
+#Initialize an empty gamma diversity data frame.
+gammaDiversity <- data.frame()
 
 for(i in 1:divisionNum){
   lowNum=(i-1)*sampleNum+1
@@ -105,6 +110,16 @@ for(i in 1:divisionNum){
   
   eLSAInput <- eLSAtmp
   
+  #Create a community matrix to determine gamma diversity.
+  #Gamma0 = sample group richness, Gamma1 = sample group Shannon index, Gamma2 = sample group inverse Simpson index.
+  abundances <- eLSAtmp[,-c(1)]
+  abundances[] <- lapply(abundances,gsub,pattern="NA",replacement=as.numeric(0),fixed=TRUE)
+  abundances <- as.data.frame(sapply(abundances,as.numeric))
+  abundances <- t(abundances)
+  gamma0 <- dz(abundances,lev="gamma",q=0)
+  gamma1 <- dz(abundances,lev="gamma",q=1)
+  gamma2 <- dz(abundances,lev="gamma",q=2)
+  
   #Designate a unique filename.
   #N is the number of samples in the subsample group.
   #S is the number of spots, or years represented in the subsample group.
@@ -113,10 +128,18 @@ for(i in 1:divisionNum){
   filename = paste("LUSweepCA",sampleNum,"Samples",lowNum,"to",highNum,"S",spotNum,"R",repNum,"M",meanLU_2000_5K,sep="")
   
   #Output file for use in eLSA.
-  write.table(eLSAInput,paste(filename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
-  eLSACommand = paste("lsa_compute ",filename,".txt ","-r ",repNum," -s ",spotNum," ",filename,"Network.txt;",sep="")
-  print(eLSACommand)
+  #write.table(eLSAInput,paste(filename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
+  #eLSACommand = paste("lsa_compute ",filename,".txt ","-r ",repNum," -s ",spotNum," ",filename,"Network.txt;",sep="")
+  #print(eLSACommand)
+  print(paste(filename,gamma0,gamma1,gamma2))
+  dat <- data.frame()
+  dat[1,1] <- paste(filename,"Network.txt",sep="")
+  dat[1,2] <- gamma0
+  dat[1,3] <- gamma1
+  dat[1,4] <- gamma2
+  gammaDiversity <- rbind(gammaDiversity,dat)
 }
+colnames(gammaDiversity) <- c("filename","gamma0","gamma1","gamma2")
 
 #Read in eLSA output.
 #Compute network statistics of the likeliest association networks between taxa.
@@ -125,8 +148,10 @@ library(network)
 library(stringr)
 #Read in site data.
 GISBioData <- read.table("CAGISBioData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
-#Ensure that all sites have a CSCI value.
+#Ensure that all sites have a land use value.
 GISBioData <- subset(GISBioData, LU_2000_5K != "NA")
+#Filter out to taxonomic groups of interest.
+GISBioData <- subset(GISBioData, MeasurementType == "benthic macroinvertebrate relative abundance")
 networkfiles <- Sys.glob("LUSweepCA83Samples*Network.txt")
 networkAnalysis <- data.frame()
 networkConTaxa <- data.frame()
@@ -379,7 +404,7 @@ colnames(networkAnalysis) <- c("filename","meanLU","l_con_rL","l_con_rCl","l_con
 networkAnalysis[networkAnalysis=="-Inf"] <- NA
 networkAnalysis[networkAnalysis=="Inf"] <- NA
 networkAnalysis <- arrange(networkAnalysis,meanLU)
-#write.table(networkAnalysis,"LU_2000_5KSiteSweepCA.txt",quote=FALSE,sep="\t",row.names = FALSE)
+write.table(networkAnalysis,"LU_2000_5KSiteSweepCA.txt",quote=FALSE,sep="\t",row.names = FALSE)
 networkAnalysis <- read.table("LU_2000_5KSiteSweepCA.txt",header=TRUE)
 
 ## Scratchpaper code for generating network graphs for publications
@@ -557,7 +582,24 @@ for(networkFile in networkfiles){
   networkdataCov <- subset(networkdata,weight>0)
   tmp2[1,4] <- covariantMatch <- sum(networkdataCov$FFGMatch)/nrow(networkdataCov)
   tmp2[1,5] <- covariantMismatch <- 1.0-covariantMatch
-  print(paste(meanLU,nrow(networkdataCon),contravariantMatch,contravariantMismatch,nrow(networkdataCov),covariantMatch,covariantMismatch))
+  tmp2[1,6] <- contravariantStrength <- mean(networkdataCon$weight) 
+  tmp2[1,7] <- covariantStrength <- mean(networkdataCov$weight)
+  print(paste(meanLU,nrow(networkdataCon),contravariantMatch,contravariantMismatch,nrow(networkdataCov),covariantMatch,covariantMismatch,contravariantStrength,covariantStrength))
   functionalMatch <- rbind(functionalMatch,tmp2)
 }
-colnames(functionalMatch) <- c("meanLU","PercentContravariantMatches","PercentContravariantMismatches","PercentCovariantMatches","PercentCovariantMismatches")
+colnames(functionalMatch) <- c("meanLU","PercentContravariantMatches","PercentContravariantMismatches","PercentCovariantMatches","PercentCovariantMismatches","ContravariantStrength","CovariantStrength")
+dev.off()
+plot(functionalMatch$meanLU, functionalMatch$PercentContravariantMatches, type='p', xlim=c(0.0,100.0), ylim=c(0.0,0.5), xlab='Land Use % cover', ylab='% Functional feeding group matches',main="Functional feeding group match fraction and land use",col="red")
+lines(smooth.spline(functionalMatch$meanLU, functionalMatch$PercentContravariantMatches,df=3),col="red")
+par(new=T)
+plot(functionalMatch$meanLU, functionalMatch$PercentCovariantMatches, type='p', xlim=c(0.0,100.0), ylim=c(0.0,0.5), xlab='Land Use % cover', ylab='% Functional feeding group matches',main="Functional feeding group match fraction and land use",col="blue")
+lines(smooth.spline(functionalMatch$meanLU, functionalMatch$PercentCovariantMatches,df=3),col="blue")
+legend("topright",c("Contravariant","Covariant"),col=c("red","blue"),lwd=10,text.width = 30, pt.cex=1,cex=1,ncol=2)
+
+dev.off()
+plot(functionalMatch$PercentContravariantMatches, -1*functionalMatch$ContravariantStrength, type='p', xlim=c(0.0,0.5), ylim=c(0.0,0.5), xlab='Land Use % cover', ylab='% Functional feeding group matches',main="Functional feeding group match fraction and land use",col="red")
+lines(smooth.spline(functionalMatch$PercentContravariantMatches, -1*functionalMatch$ContravariantStrength,df=3),col="red")
+par(new=T)
+plot(functionalMatch$PercentCovariantMatches, functionalMatch$CovariantStrength, type='p', xlim=c(0.0,0.5), ylim=c(0.0,0.5), xlab='Land Use % cover', ylab='% Functional feeding group matches',main="Functional feeding group match fraction and land use",col="blue")
+lines(smooth.spline(functionalMatch$PercentCovariantMatches, functionalMatch$CovariantStrength,df=3),col="blue")
+legend("topright",c("Contravariant","Covariant"),col=c("red","blue"),lwd=10,text.width = 30, pt.cex=1,cex=1,ncol=2)
