@@ -7,223 +7,117 @@ library("vegan")
 library("microbiome")
 library(data.table)
 library(tidyr)
-library("phyloseq")
-library(lattice)
-library(reshape2)
-library(geosphere)
-library(RADanalysis)
-library(MASS)
-library(fitdistrplus)
+library(hierDiversity)
+library(zetadiv)
 
+
+#This script focuses on zeta diversity patterns across the SCCWRP California streams data set.
 setwd("~/Desktop/SCCWRP")
-
-#Read in insect data from CEDEN sites.
-insectDataCEDENRAW <- read.table("BugTax_dnaSites_CEDEN.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
-#Subset only replicate 1
-insectDataCEDEN <- filter(insectDataCEDENRAW, CollectionReplicate==1)
-insectTaxaCEDEN <- insectDataCEDEN[,c("Phylum","Class","Orders","Family","Genus","FinalID")]
-names(insectTaxaCEDEN)[names(insectTaxaCEDEN)=="Orders"]<-"Order"
-#Get higher order taxanomic IDs for CEDEN data.
-CEDENHighTaxa <- insectTaxaCEDEN[,c("Phylum","Class","Order")]
-
-#Read in SMC site data.
-SMCDataRaw <- read.table("SMCAllSites.csv", header=TRUE, sep=",",as.is=T,check.names=FALSE)
-SMCData <- SMCDataRaw[,c("Order","Family","Genus","FinalID")]
-SMCData <- SMCData[!duplicated(SMCData$FinalID),]
-SMCTaxa <- join(SMCData,CEDENHighTaxa,by=c("Order"))
-SMCTaxa <- SMCTaxa[!duplicated(SMCTaxa$FinalID),]
-SMCTaxa <- SMCTaxa[,c("Phylum","Class","Order","Family","Genus","FinalID")]
-
-#Merge to make a unified taxonomy table
-taxa <- rbind(SMCTaxa,insectTaxaCEDEN)
-taxa <- taxa[match(unique(taxa$FinalID), taxa$FinalID),]
-taxa <- taxa[,c("Phylum","Class","Order","Family","Genus","FinalID")]
-taxa[taxa==""] <- NA
-taxa <- filter(taxa,taxa$FinalID!="NA")
-taxaID <- unique(taxa$FinalID)
-
-#Read in site data.
+#Read in site data containing biological counts, water chemistry, and land usage
+#values.  If this file is not yet generated then proceed with the following commands
+#to generate it in the first place.
 GISBioData <- read.table("CAGISBioData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
-
-#Get additional site metadata.
+#Filter out to taxonomic groups of interest.
+GISBioData <- subset(GISBioData, MeasurementType == "benthic macroinvertebrate relative abundance")
+#Remove duplicate measures.
+GISBioData <- GISBioData[!duplicated(GISBioData[,c("UniqueID","FinalID","Count")]),]
+#Order data by LU_2000_5K.
+GISBioData <- arrange(GISBioData,LU_2000_5K)
+#Add taxa counts by sample.
+tmp <- data.frame(table(GISBioData$UniqueID))
+colnames(tmp) <- c("UniqueID","nTaxa")
+GISBioData <- join(GISBioData,tmp,by=c("UniqueID"))
+#Read in sample metadata.
 SCCWRP <- read.table("CSCI.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
-watershedTable <- as.data.frame(table(SCCWRP$Watershed))
-#Merge in watershed IDs into site data.
-GISBioData <- join(GISBioData,SCCWRP[,c("UniqueID","Watershed")],by=c("UniqueID"))
+#Get latitude and longitude bounds of data set.
+latMin <- min(SCCWRP$Latitude)
+latMax <- max(SCCWRP$Latitude)
+lonMin <- min(SCCWRP$Longitude)
+lonMax <- max(SCCWRP$Longitude)
+#Merge in sample altitude.
+GISBioData <- join(GISBioData,SCCWRP[,c("UniqueID","altitude")],by=c("UniqueID"))
+#Get samples per watershed.
+watersheds <- as.data.frame((table(SCCWRP$Watershed)))
+colnames(watersheds) <- c("Watershed","Samples")
+#Get the samples per watershed for watersheds with at least a certain number of samples.
+LargeWatersheds <- subset(watersheds,Samples>=40)
+#Taxa frequency table.
+taxaFreq <- as.data.frame(table(GISBioData$FinalID))
+colnames(taxaFreq) <- c("FinalID","Freq")
+#Find the total number of taxa in the full data set.
+taxaMax <- length(unique(GISBioData$FinalID))
 
-#Select site data which has known taxonomic data.
-BMIData <- subset(GISBioData,GISBioData$FinalID %in% taxaID)
+#Get number of unique LU_2000_5K values.
+sitesNum <- length(unique(GISBioData$UniqueID))
+#Enter number of divisions for subsampling.
+divisionNum = 60
+#Obtain subsampling number.
+sampleNum <- as.integer(sitesNum/divisionNum)
+uniqueSamples <- as.data.frame(unique(GISBioData$UniqueID))
+colnames(uniqueSamples) <- c("UniqueID")
 
-#Subset site data by watershed.
-BMIData <- subset(BMIData,Watershed=="Cuyama")
-
-#Format taxa IDs for downstream Phyloseq work and network generation.
-OTUID <- as.data.frame(taxaID)
-colnames(OTUID) <- c("FinalID")
-
-#To generate an OTU table of SCCWRP data for use in Phyloseq.
-for(sample in unique(BMIData$UniqueID)){
-  tmp1 <- subset(BMIData,UniqueID==sample)
-  tmp1 <- tmp1[!duplicated(tmp1[c("FinalID","Count")]),]
-  tmp1 <- join(OTUID,tmp1,by=c("FinalID"))[,c("FinalID","Count")]
-  OTUID <- cbind(OTUID,tmp1$Count)
-  names(OTUID)[names(OTUID)=="tmp1$Count"]<-sample
+zetaAnalysis <- data.frame()
+for(i in 1:divisionNum){
+  lowNum=(i-1)*sampleNum+1
+  highNum=i*sampleNum
+  GISBioData <- arrange(GISBioData,LU_2000_5K)
+  uniqueSampleSubset <- as.data.frame(uniqueSamples[lowNum:highNum,1])
+  colnames(uniqueSampleSubset) <- c("UniqueID")
+  GISBioDataSubset <- GISBioData[GISBioData$UniqueID %in% as.vector(uniqueSampleSubset$UniqueID),]
+  #Determine the average LU_2000_5K per subsample of sites.
+  meanLU_2000_5K = mean(na.omit(GISBioDataSubset$LU_2000_5K))
+  print(paste(lowNum,highNum,meanLU_2000_5K))
+  #Initialize a data frame where the rows are all of the unique measurements for a given
+  #subset of the data.
+  #Order the data frame by measurement name.
+  selected <- arrange(GISBioDataSubset,Year,UniqueID)
+  
+  #Generating a presence/absence matrix for California SCCWRP data.
+  eLSAInput <- as.data.frame(unique(selected$FinalID))
+  colnames(eLSAInput)<-c("FinalID")
+  eLSAInput <- as.data.frame(eLSAInput[order(as.character(eLSAInput$FinalID)),])
+  colnames(eLSAInput)<-c("FinalID")
+  taxa <- eLSAInput
+  #Add the relative taxa abundances by column to a new dataframe.
+  #The rows are the unique taxa in a given subset of data.
+  selected <- selected[order(selected$Year,selected$UniqueID,selected$FinalID),]
+  for(ID in unique(selected$UniqueID)){
+    tmp <- filter(selected, UniqueID == ID)[,c("FinalID","Measurement","UniqueID")]
+    tmp <- as.data.frame(tmp[order(tmp$FinalID),])
+    tmp <- tmp[-c(3)]
+    colnames(tmp)<-c("FinalID",ID)
+    tmp <- tmp %>% group_by(FinalID) %>% summarise_if(is.numeric,mean,na.rm=TRUE)
+    tmp <- join(tmp,taxa,type="full",by=c("FinalID"))
+    tmp <- as.data.frame(tmp[order(tmp$FinalID),])
+    eLSAInput <- cbind(eLSAInput,tmp)
+    eLSAInput <- eLSAInput[,!duplicated(colnames(eLSAInput))]
+  }
+  
+  #Generate a presence/absence dataframe for zeta diversity analysis.
+  #Rows for samples, columns for taxa IDs.
+  eLSAInput[is.na(eLSAInput)] <- 0
+  eLSANames <- eLSAInput$FinalID
+  data.SCCWRP <- as.data.frame(t(eLSAInput[,-c(1)]))
+  colnames(data.SCCWRP) <- eLSANames
+  data.SCCWRP[data.SCCWRP > 0] <- 1
+  
+  #Computes zeta diversity, the number of species shared by multiple assemblages, for a range of orders (number of assemblages or sites), 
+  #using combinations of sampled sites, and fits the decline to an exponential and a power law relationship.
+  zetaDecay <- Zeta.decline.mc(data.SCCWRP,xy=NULL,orders=1:10,sam=1000)
+  
+  dat <- data.frame()
+  dat[1,1] <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
+  dat[1,2] <- zetaDecay$zeta.exp$coefficients[2] #Zeta diversity exponential decay exponent.
+  dat[1,3] <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
+  dat[1,4] <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
+  dat[1,5] <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
+  dat[1,6] <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
+  
+  zetaAnalysis <- rbind(zetaAnalysis,dat)
+  print(dat)
 }
+colnames(zetaAnalysis) <- c("ZetaExponentialIntercept","ZetaExponentialExponent","ZetaExponentialAIC","ZetaPLIntercept","ZetaPLExponent","ZetaPLAIC")
+write.table(zetaAnalysis,"LU_2000_5KSiteSweepCAZeta.txt",quote=FALSE,sep="\t",row.names = FALSE)
 
-#Create Phyloseq object with the OTU table, sample factors, and taxonomic data.
-otumat <- as.matrix(OTUID[,-c(1)])
-otumat[is.na(otumat)] <- 0
-rownames(otumat) <- OTUID$FinalID
-OTU = otu_table(otumat,taxa_are_rows = TRUE)
-taxmat <- as.matrix(subset(taxa,taxa$FinalID %in% OTUID$FinalID))
-rownames(taxmat) <- as.data.frame(taxmat)$FinalID
-taxmat <- taxmat[,-c(6)]
-TAX = tax_table(taxmat)
-samplemat <- as.matrix(SCCWRP)
-row.names(samplemat) <- SCCWRP$UniqueID
-sampledata <- sample_data(as.data.frame(samplemat))
-physeq <- phyloseq(OTU,TAX,sampledata)
-test <- physeq
-
-#Subset Phyloseq object by various factors and perform basic PCA and beta diversity tests.
-#Unique watershed regions:
-# "SMC_out"            "Ventura"            "SantaClara"         "SantaMonicaBay"    
-# "SanGabriel"         "Calleguas"          "LosAngeles"         "MiddleSantaAna"    
-# "UpperSantaAna"      "LowerSantaAna"      "SanJacinto"         "SanJuan"           
-# "NorthernSanDiego"   "CentralSanDiego"    "MissionBaySanDiego" "SouthernSanDiego"
-#physeqSubset <- subset_samples(physeq, SMCShed!="SMC_out")
-physeqSubset <- subset_samples(physeq)
-physeqSubset <- transform_sample_counts(physeqSubset, function(x) x/sum(x))
-plot_ordination(physeqSubset,ordinate(physeqSubset,"NMDS","bray"),color="Watershed")
-
-# Perform a PERMANOVA using a set number of permutations on a particular
-# beta diversity metric and the significance of a particular design variable.
-testDF = as(sample_data(physeqSubset), "data.frame")
-testAdonis = adonis(distance(physeqSubset,method="bray")~Year+Watershed+Ag_2000_5K+CODE_21_2000_5K+URBAN_2000_5K+LU_2000_5K+altitude,data=testDF,permutations = 1000)
-testAdonis
-
-#Plot beta diversity.
-Dist = distance(physeqSubset, method = "bray")
-ord = ordinate(physeqSubset, method = "PCoA", distance = Dist)
-plot_scree(ord, "Scree Plot: Bray-Curtis MDS")
-levelplot(as.matrix(Dist))
-hist(as.vector(as.matrix(Dist)))
-
-#Convert beta diversity matrix into a three column data frame.
-distmat <- setNames(melt(as.matrix(Dist)), c("Site1","Site2","DiversityDistance"))
-#Merge in the spatial coordinates for each pair of sites.
-coord1 <- as.data.frame(as.matrix(sampledata[,c("UniqueID","Latitude","Longitude")]))
-rownames(coord1) <- 1:nrow(coord1)
-colnames(coord1) <- c("Site1","Lat1","Lon1")
-distmat <- merge(distmat,coord1,by=c("Site1"))
-coord2 <- as.data.frame(as.matrix(sampledata[,c("UniqueID","Latitude","Longitude")]))
-rownames(coord2) <- 1:nrow(coord2)
-colnames(coord2) <- c("Site2","Lat2","Lon2")
-distmat <- merge(distmat,coord2,by=c("Site2"))
-distmat$Lat1 <- as.numeric(as.character(distmat$Lat1))
-distmat$Lon1 <- as.numeric(as.character(distmat$Lon1))
-distmat$Lat2 <- as.numeric(as.character(distmat$Lat2))
-distmat$Lon2 <- as.numeric(as.character(distmat$Lon2))
-#Add in geodesic distances to compare separation distance to beta diversity distance.
-distmat$SpatialDistance <- lapply(1:nrow(distmat),function(x) as.numeric((distm(as.matrix(distmat[x,c("Lon1","Lat1")]), as.matrix(distmat[x,c("Lon2","Lat2")]), fun = distGeo))))
-distmat$SpatialDistance <- as.numeric(distmat$SpatialDistance)
-
-#Generate diversity metrics per sample.
-library("gambin")
-library("sads")
-siteDiversity <- as.data.frame(matrix(NA,nrow=1,ncol=9))
-colnames(siteDiversity) <- c("UniqueID","gambinAlpha","Simpson","InvSimpson","nTaxa","Shannon","fisherAlpha","geomP","broken_stick_likelihood")
-tmp2 <- as.data.frame(matrix(NA,nrow=1,ncol=9))
-colnames(tmp2) <- c("UniqueID","gambinAlpha","Simpson","InvSimpson","nTaxa","Shannon","fisherAlpha","geomP","broken_stick_likelihood")
-for(sample in unique(otudata$UniqueID)){
-  tmp1 <- subset(otudata,UniqueID==sample)
-  tmp2$UniqueID <- sample
-  #Rarefy samples to 500 counts.  Permute and take the mean.
-  RAD <- matrix(NA,nrow=1,ncol=nrow(tmp1))
-  for(i in 1:20){
-    tmp3 <- rrarefy(tmp1$Count,500)
-    RAD <- mapply(c,as.data.frame(RAD),as.data.frame(tmp3))
-  }
-  RAD <- as.integer(colMeans(RAD+0.5,na.rm=TRUE))
-  #To calculate the Gambin alpha parameter per sample
-  tmp2$nTaxa <- nrow(tmp1)
-  if(sum(RAD)>=500 & nrow(tmp1) >= 12 & min(RAD) > 0){
-    gambin_fit <- fit_abundances(RAD)
-    tmp2$gambinAlpha <- gambin_fit$alpha
-    tmp2$Simpson <- diversity(RAD,index="simpson")
-    tmp2$InvSimpson <- diversity(RAD,index="invsimpson")
-    tmp2$Shannon <- diversity(RAD,index="shannon")
-    tmp2$fisherAlpha <- fisher.alpha(RAD)
-    geom_fit <- fitdist(RAD, distr ="geom")
-    tmp2$geomP <- geom_fit$estimate
-    broken_stick <- fitrad(RAD, rad="rbs")
-    tmp2$broken_stick_likelihood <- -broken_stick@details$value
-  }
-  else{
-    tmp2$gambinAlpha <- NA
-    tmp2$Simpson <- NA
-    tmp2$InvSimpson <- NA
-    tmp2$Shannon <- NA
-    tmp2$fisherAlpha <- NA
-    tmp2$geomP <- NA
-    tmp2$broken_stick_likelihood <- NA
-  }
-  siteDiversity <- rbind(siteDiversity,tmp2)
-  print(sample)
-}
-
-siteDiversity <- siteDiversity[-c(1),]
-GISData$gambinAlpha <- siteDiversity$gambinAlpha
-GISData$Simpson <- siteDiversity$Simpson
-GISData$InvSimpson <- siteDiversity$InvSimpson
-GISData$nTaxa <- siteDiversity$nTaxa
-GISData$Shannon <- siteDiversity$Shannon
-GISData$fisherAlpha <- siteDiversity$fisherAlpha
-GISData$geomP <- siteDiversity$geomP
-GISData$broken_stick_likelihood <- siteDiversity$broken_stick_likelihood
-write.csv(GISData,file="CSCI.csv",row.names=FALSE)
-
-#Regression between network parameters.
-library(Hmisc)
-library(corrplot)
-library("PerformanceAnalytics")
-chart.Correlation(GISData[,c("LU_2000_5K","altitude","nTaxa","Simpson","InvSimpson","gambinAlpha","fisherAlpha","Shannon","CSCI","geomP","broken_stick_likelihood")], histogram=FALSE, method="spearman")
-chart.Correlation(GISData[,c("LU_2000_5K","altitude","nTaxa","CSCI")], histogram=FALSE, method="spearman")
-chart.Correlation(GISData[,c("LU_2000_5K","gambinAlpha","CSCI")], histogram=FALSE, method="spearman")
-
-#Generate map of data for a given chemical parameter in California.
-library(ggmap)
-library(maps)
-library(mapdata)
-dev.off()
-MapCoordinates <- data.frame(GISData$LU_2000_5K,GISData$gambinAlpha,GISData$fisherAlpha,GISData$Simpson,GISData$InvSimpson,GISData$nTaxa,GISData$Shannon,GISData$CSCI,GISData$geomP,GISData$altitude,GISData$Longitude,GISData$Latitude,GISData$SMCShed)
-colnames(MapCoordinates) = c("LU_2000_5K","gambinAlpha","fisherAlpha","Simpson","InvSimpson","nTaxa","Shannon","CSCI","geomP",'alt','lon','lat','SMCShed')
-MapCoordinates <- na.omit(MapCoordinates)
-mapBoundaries <- make_bbox(lon=MapCoordinates$lon,lat=MapCoordinates$lat,f=0.1)
-CalMap <- get_map(location=mapBoundaries,maptype="satellite",source="google")
-#CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = SMCShed),size=2)+scale_colour_gradientn(colours=rainbow(4))
-CalMap <- ggmap(CalMap)+geom_point(data = MapCoordinates, mapping = aes(x = lon, y = lat, color = SMCShed),size=2)
-CalMap
-
-# Spiec-Easi network analysis.
-library(devtools)
-library(SpiecEasi)
-library(phyloseq)
-library(seqtime)
-library(igraph)
-library(network)
-library(stringr)
-spiec.out=spiec.easi(test, method="mb",icov.select.params=list(rep.num=20))
-spiec.graph=adj2igraph(spiec.out$refit, vertex.attr=list(name=taxa_names(test)))
-plot_network(spiec.graph, test, type='TAX', color="Red", label=NULL)
-betaMat=as.matrix(symBeta(getOptBeta(spiec.out)))
-
-library(maptools)
-library(rgdal)
-library(sf)
-library(sp)
-library(maps)
-watersheds=readOGR("/Users/levisimons/Desktop/Data/wbdhu8_a_ca.shp")
-coordinates(GISData) <- c("Latitude","Longitude")
-inside.sheds <- !is.na(over(GISData, as(watersheds,"SpatialPolygons")))
-
+networkAnalysis <- read.table("LU_2000_5KSiteSweepCA.txt",header=TRUE)
+networkAnalysis <- cbind(networkAnalysis,zetaAnalysis)
