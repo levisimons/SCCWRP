@@ -32,6 +32,8 @@ colnames(watersheds) <- c("Watershed","Samples")
 LargeWS <- data.frame(matrix(ncol = 2, nrow = 0))
 colnames(LargeWS) <- c("Watershed","Samples")
 
+#This portion of code determines which watersheds have enough samples in all land use bands
+#to generate networks.
 #Set land use thresholds.
 PD <- 5 #Partially degraded land use threshold.
 HD <- 15 #Highly degraded land use threshold.
@@ -66,6 +68,8 @@ for(WS in watersheds$Watershed){
   }
 }
 
+#Generate LSA input files for each watershed which contains a sufficient number of samples
+#for each land use band.
 for(WS in LargeWS$Watershed){
   GISBioDataSubset <- subset(GISBioData,Watershed==WS)
   for(i in 1:3){
@@ -154,3 +158,187 @@ for(WS in LargeWS$Watershed){
     print(eLSACommand)
   }
 }
+
+
+#Read in eLSA output.
+#Compute network statistics of the likeliest association networks between taxa.
+library(igraph)
+library(network)
+library(stringr)
+#Read in site data.
+GISBioData <- read.table("CAGISBioData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+#Ensure that all sites have a land use value.
+GISBioData <- subset(GISBioData, LU_2000_5K != "NA")
+#Filter out to taxonomic groups of interest.
+GISBioData <- subset(GISBioData, MeasurementType == "benthic macroinvertebrate relative abundance")
+#Get list of taxa of interest.
+taxaList <- as.data.frame(table(GISBioData$FinalID))
+colnames(taxaList) <- c("FinalID","Freq")
+#Get network files to analyze.
+networkfiles <- as.data.frame(Sys.glob("Watershed*NSamples*Network.txt"))
+colnames(networkfiles) <- c("filename")
+#Add watersheds to the filenames
+networkfiles$Watershed <- str_split_fixed(str_split_fixed(networkfiles$filename,"Watershed",2)[,2],"NSamples",2)[,1]
+networkfiles <- arrange(networkfiles,Watershed)
+
+#Analyze network topologies for co-occurrence networks generated from taxa which occur
+#across all land use bands on a per watershed basis.
+networkAnalysis <- data.frame()
+for(WS in unique(networkfiles$Watershed)){
+  WSSubset <- subset(networkfiles,Watershed==WS)
+  coreTaxa <- list()
+  #Get the taxa which are common to a watershed across all land use bands.
+  for(networkFile in unique(WSSubset$filename)){
+    networkdata <- read.delim(networkFile,header=TRUE, sep="\t",as.is=T,check.names=FALSE)
+    #Filter out taxa not being focused on in a particular study.
+    networkdata <- networkdata[networkdata$X %in% as.vector(taxaList$FinalID) | networkdata$Y %in% as.vector(taxaList$FinalID),]
+    #Filter out association network data based on P and Q scores, for the local similarity
+    #between two factors, with values less than a particuar threshold.
+    networkdata <- filter(networkdata, P <= 1e-2)
+    networkdata <- filter(networkdata, Q <= 1e-2)
+    names(networkdata)[names(networkdata)=="LS"]<-"weight"
+    #Get taxa present for each co-occurrence network.
+    uniqueTaxa <- append(unique(networkdata$X),unique(networkdata$Y))
+    if(length(coreTaxa)==0){
+      coreTaxa <- uniqueTaxa
+    }
+    if(length(coreTaxa)>0){
+      coreTaxa <- Reduce(intersect,list(coreTaxa,uniqueTaxa))
+    }
+    #print(paste(WS,length(coreTaxa)))
+  }
+  for(networkFile in unique(WSSubset$filename)){
+    networkdata <- read.delim(networkFile,header=TRUE, sep="\t",as.is=T,check.names=FALSE)
+    #Focus only on taxa common to all land use bands in a watershed.
+    networkdata <- networkdata[networkdata$X %in% as.vector(coreTaxa) | networkdata$Y %in% as.vector(coreTaxa),]
+    #Filter out association network data based on P and Q scores, for the local similarity
+    #between two factors, with values less than a particuar threshold.
+    networkdata <- filter(networkdata, P <= 1e-2)
+    networkdata <- filter(networkdata, Q <= 1e-2)
+    names(networkdata)[names(networkdata)=="LS"]<-"weight"
+    #Get mean land use sample group.
+    options(digits=15)
+    meanLU <- as.numeric(str_match(networkFile,"M(.*?)Network")[2])
+    #Generate network graph and begin calculating network parameters.
+    networkgraph=graph.data.frame(networkdata,directed=FALSE)
+    #Covariant co-occurrence network
+    networkgraphCov <- graph.data.frame(subset(networkdata,weight>0),directed=FALSE)
+    if(ecount(networkgraphCov)>0){
+      # Generate adjacency matrix of relative taxa abundance correlations
+      adj= as.network(get.adjacency(networkgraphCov,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
+      cov_C = network.density(adj)
+      #Calculate the degree heterogeneity.
+      networkmatrix <- as.matrix(get.adjacency(networkgraphCov,attr='weight'))
+      #Mean interaction strength
+      cov_meanStrength <- mean(abs(networkmatrix))
+      networkmatrix[upper.tri(networkmatrix)] <- 0
+      networkmatrix <- ifelse(networkmatrix!=0,1,networkmatrix)
+      cov_zeta <- mean(colSums(networkmatrix)^2)/mean(colSums(networkmatrix))^2
+      #Generate randomized version of full weighted adjacency matrix.
+      #Calculate the degree heterogeneity of the corresponding random network.
+      set.seed(1)
+      randnetworkmatrixCov <- matrix(sample(as.vector((networkmatrix))),nrow=nrow(networkmatrix),ncol=ncol(networkmatrix))
+      randnetworkmatrixCov[upper.tri(randnetworkmatrixCov)] <- 0
+      randnetworkmatrixCov <- ifelse(randnetworkmatrixCov!=0,1,randnetworkmatrixCov)
+      cov_rand_zeta <- mean(colSums(randnetworkmatrixCov)^2)/mean(colSums(randnetworkmatrixCov))^2
+      # Log response ratio of degree heterogeneity.
+      cov_lr_zeta <- log(cov_zeta/cov_rand_zeta)
+      #Calculate modularity
+      cov_M <- modularity(cluster_edge_betweenness(networkgraphCov, weights=NULL,directed=FALSE))
+      #Edge counts
+      cov_Edge <- ecount(networkgraphCov)
+      #Node counts
+      cov_nodes <- vcount(networkgraphCov)
+      #Get the average degree per node.
+      cov_k <- (2*cov_Edge)/cov_nodes
+      #Characteristic path length.
+      cov_L <- mean_distance(networkgraphCov,directed=FALSE)
+      #Log ratio of characteristic path length to its random counterpart.
+      cov_lr_L <- log(mean_distance(networkgraphCov,directed=FALSE)/(0.5+((log(cov_nodes)-0.5772156649)/log(cov_k))))
+      #Clustering coefficient.
+      cov_Cl <- transitivity(networkgraphCon,type="globalundirected",isolate="zero")
+      #Log ratio of clustering coefficient to its random counterpart.
+      cov_lr_Cl <- log(transitivity(networkgraphCov,type="globalundirected",isolate="zero")/(cov_k/cov_nodes))
+    }
+    #Contravariant co-occurrence network
+    networkgraphCon <- graph.data.frame(subset(networkdata,weight<0),directed=FALSE)
+    if(ecount(networkgraphCon)>0){
+      # Generate adjacency matrix of relative taxa abundance correlations
+      adj= as.network(get.adjacency(networkgraphCon,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
+      con_C = network.density(adj)
+      #Calculate the degree heterogeneity.
+      networkmatrix <- as.matrix(get.adjacency(networkgraphCon,attr='weight'))
+      #Mean interaction strength
+      con_meanStrength <- mean(abs(networkmatrix))
+      networkmatrix[upper.tri(networkmatrix)] <- 0
+      networkmatrix <- ifelse(networkmatrix!=0,1,networkmatrix)
+      con_zeta <- mean(colSums(networkmatrix)^2)/mean(colSums(networkmatrix))^2
+      #Generate randomized version of full weighted adjacency matrix.
+      #Calculate the degree heterogeneity of the corresponding random network.
+      set.seed(1)
+      randnetworkmatrixCon <- matrix(sample(as.vector((networkmatrix))),nrow=nrow(networkmatrix),ncol=ncol(networkmatrix))
+      randnetworkmatrixCon[upper.tri(randnetworkmatrixCon)] <- 0
+      randnetworkmatrixCon <- ifelse(randnetworkmatrixCon!=0,1,randnetworkmatrixCon)
+      con_rand_zeta <- mean(colSums(randnetworkmatrixCon)^2)/mean(colSums(randnetworkmatrixCon))^2
+      # Log response ratio of degree heterogeneity.
+      con_lr_zeta <- log(con_zeta/con_rand_zeta)
+      #Calculate modularity
+      con_M <- modularity(cluster_edge_betweenness(networkgraphCon, weights=NULL,directed=FALSE))
+      #Edge counts
+      con_Edge <- ecount(networkgraphCon)
+      #Node counts
+      con_nodes <- vcount(networkgraphCon)
+      #Get the average degree per node.
+      con_k <- (2*con_Edge)/con_nodes
+      #Characteristic path length.
+      con_L <- mean_distance(networkgraphCon,directed=FALSE)
+      #Log ratio of characteristic path length to its random counterpart.
+      con_lr_L <- log(mean_distance(networkgraphCon,directed=FALSE)/(0.5+((log(con_nodes)-0.5772156649)/log(con_k))))
+      #Clustering coefficient.
+      con_Cl <- transitivity(networkgraphCon,type="globalundirected",isolate="zero")
+      #Log ratio of clustering coefficient to its random counterpart.
+      con_lr_Cl <- log(transitivity(networkgraphCon,type="globalundirected",isolate="zero")/(con_k/con_nodes))
+    }
+    #Add all network parameters to a dataframe.
+    networkAnalysis <- rbindlist(list(networkAnalysis,list(networkFile,WS,meanLU,cov_nodes,cov_C,cov_Edge,cov_meanStrength,cov_zeta,cov_lr_zeta,cov_M,cov_L,cov_Cl,con_nodes,con_C,con_Edge,con_meanStrength,con_zeta,con_lr_zeta,con_M,con_L,con_Cl)))
+    print(paste(networkFile,WS,meanLU,cov_nodes,cov_C,cov_Edge,cov_meanStrength,cov_zeta,cov_lr_zeta,cov_M,cov_lr_L,cov_lr_Cl,con_nodes,con_C,con_Edge,con_meanStrength,con_zeta,con_lr_zeta,con_M,con_lr_L,con_lr_Cl))
+  }
+}
+colnames(networkAnalysis) <- c("filename","Watershed","meanLU","cov_nodes","cov_C","cov_Edge","cov_meanStrength","cov_zeta","cov_lr_zeta","cov_M","cov_L","cov_Cl","con_nodes","con_C","con_Edge","con_meanStrength","con_zeta","con_lr_zeta","con_M","con_L","con_Cl")
+networkAnalysis <- dplyr::arrange(networkAnalysis,Watershed,meanLU)
+#Remove any watersheds with spurious results due to insufficient statistics.
+networkAnalysis <- subset(networkAnalysis,Watershed!="LakeTahoe")
+#Set infinities to null values.
+networkAnalysis[networkAnalysis=="-Inf"] <- NA
+networkAnalysis[networkAnalysis=="Inf"] <- NA
+
+#Regression between network parameters.
+library(Hmisc)
+library(corrplot)
+library("PerformanceAnalytics")
+#Each significance level is associated to a symbol : p-values(0, 0.001, 0.01, 0.05, 0.1, 1) <=> symbols(“***”, “**”, “*”, “.”, " “)
+chart.Correlation(networkAnalysis[,c("meanLU","cov_nodes","cov_C","cov_Edge","cov_meanStrength","cov_zeta","cov_lr_zeta","cov_M","cov_lr_L")], histogram=FALSE, method="spearman")
+chart.Correlation(networkAnalysis[,c("meanLU","con_nodes","con_C","con_Edge","con_meanStrength","con_zeta","con_lr_zeta","con_M","con_lr_L")], histogram=FALSE, method="spearman")
+
+#Check how network topologies change within watersheds.
+test <- networkAnalysis
+test$diff_meanLU <- ave(test$meanLU, test$Watershed, FUN=function(x) c(NA, diff(x)))
+test$diff_cov_nodes <- ave(test$cov_nodes, test$Watershed, FUN=function(x) c(NA,diff(x)))
+test$diff_con_nodes <- ave(test$con_nodes, test$Watershed, FUN=function(x) c(NA,diff(x)))
+test$diff_cov_C <- ave(test$cov_C, test$Watershed, FUN=function(x) c(NA, diff(x)))
+test$diff_con_C <- ave(test$con_C, test$Watershed, FUN=function(x) c(NA, diff(x)))
+test$diff_cov_zeta <- ave(test$cov_zeta, test$Watershed, FUN=function(x) c(NA, diff(x)))
+test$diff_con_zeta <- ave(test$con_zeta, test$Watershed, FUN=function(x) c(NA, diff(x)))
+test$diff_cov_lr_zeta <- ave(test$cov_lr_zeta, test$Watershed, FUN=function(x) c(NA, diff(x)))
+test$diff_con_lr_zeta <- ave(test$con_lr_zeta, test$Watershed, FUN=function(x) c(NA, diff(x)))
+test$diff_cov_meanStrength <- ave(test$cov_meanStrength, test$Watershed, FUN=function(x) c(NA, diff(x)))
+test$diff_con_meanStrength <- ave(test$con_meanStrength, test$Watershed, FUN=function(x) c(NA, diff(x)))
+test$diff_cov_M <- ave(test$con_M, test$Watershed, FUN=function(x) c(NA, diff(x)))
+test$diff_con_M <- ave(test$cov_M, test$Watershed, FUN=function(x) c(NA, diff(x)))
+test$diff_cov_L <- ave(test$cov_L, test$Watershed, FUN=function(x) c(NA, diff(x)))
+test$diff_con_L <- ave(test$con_L, test$Watershed, FUN=function(x) c(NA, diff(x)))
+test$diff_cov_Cl <- ave(test$cov_Cl, test$Watershed, FUN=function(x) c(NA, diff(x)))
+test$diff_con_Cl <- ave(test$con_Cl, test$Watershed, FUN=function(x) c(NA, diff(x)))
+
+chart.Correlation(test[,c("diff_meanLU","diff_cov_nodes","diff_cov_C","diff_cov_meanStrength","diff_cov_zeta","diff_cov_lr_zeta","diff_cov_M","diff_cov_L","diff_cov_Cl")], histogram=FALSE, method="spearman")
+chart.Correlation(test[,c("diff_meanLU","diff_con_nodes","diff_con_C","diff_con_meanStrength","diff_con_zeta","diff_con_lr_zeta","diff_con_M","diff_con_L","diff_con_Cl")], histogram=FALSE, method="spearman")
