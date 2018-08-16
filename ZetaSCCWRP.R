@@ -34,6 +34,7 @@ GISBioData <- join(GISBioData,SCCWRP[,c("UniqueID","altitude")],by=c("UniqueID")
 #Get samples per watershed.
 watersheds <- as.data.frame((table(SCCWRP$Watershed)))
 colnames(watersheds) <- c("Watershed","Samples")
+GISBioData <- join(GISBioData,watersheds,by=c("Watershed"))
 #Taxa frequency table.
 taxaFreq <- as.data.frame(table(GISBioData$FinalID))
 colnames(taxaFreq) <- c("FinalID","Freq")
@@ -42,10 +43,6 @@ taxaMax <- length(unique(GISBioData$FinalID))
 
 #Generating a presence/absence matrix for California SCCWRP data.
 selected <- GISBioData
-selected <- subset(GISBioData,LU_2000_5K>=90)
-#selected <- subset(selected,Year==2000)
-#selected <- subset(selected,LU_2000_5K>=20)
-#selected <- GISBioData
 selected <- arrange(selected,Year,UniqueID)
 eLSAInput <- as.data.frame(unique(selected$FinalID))
 colnames(eLSAInput)<-c("FinalID")
@@ -82,6 +79,25 @@ data.SCCWRP <- as.data.frame(t(eLSAInput[,-c(1)]))
 colnames(data.SCCWRP) <- eLSANames
 data.SCCWRP[data.SCCWRP > 0] <- 1
 
+
+#Get the samples per watershed for watersheds with at least a certain number of samples.
+selected <- subset(GISBioData,Samples>=100)
+LUhigh = 100
+LULow = 15
+data.SCCWRP.LUband <- data.frame()
+for(WS in unique(selected$Watershed)){
+  WSSubset <- subset(selected,Watershed==WS & LU_2000_5K <= LUhigh & LU_2000_5K > LULow)
+  if(length(unique(WSSubset$UniqueID))>20){
+    data.SCCWRP.subset <- subset(data.SCCWRP, rownames(data.SCCWRP) %in% sample(unique(WSSubset$UniqueID),20))
+    data.SCCWRP.LUband <- rbind(data.SCCWRP.LUband,data.SCCWRP.subset)
+    #Computes zeta diversity, the number of species shared by multiple assemblages, for a range of orders (number of assemblages or sites), 
+    #using combinations of sampled sites, and fits the decline to an exponential and a power law relationship.
+    zetaDecay <- Zeta.decline.mc(data.SCCWRP.subset,xy=NULL,orders=1:10,sam=1000)
+    print(paste(WS,length(unique(WSSubset$UniqueID)),zetaDecay$zeta.pl$coefficients[2]))
+  }
+}
+zetaDecay <- Zeta.decline.mc(data.SCCWRP.LUband,xy=NULL,orders=1:10,sam=1000)
+print(paste(LULow,LUhigh,zetaDecay$zeta.pl$coefficients[2]))
 #Store presence/absence matrix of California SCCWRP data.
 #write.table(data.SCCWRP,"SCCWRPCAPresenceAbsence.txt",quote=FALSE,sep="\t",row.names = FALSE)
 
@@ -94,46 +110,39 @@ xy.SCCWRP <- xy.SCCWRP[!duplicated(xy.SCCWRP[c("UniqueID")]),]
 xy.SCCWRP <- xy.SCCWRP[,c("Latitude","Longitude")]
 
 #Subset environmental factor data.
-env.SCCWRP <- selected[,c("UniqueID","Watershed","Ag_2000_5K","CODE_21_2000_5K","URBAN_2000_5K","LU_2000_5K","Year")]
+env.SCCWRP <- selected[,c("UniqueID","Watershed","Ag_2000_5K","CODE_21_2000_5K","URBAN_2000_5K","LU_2000_5K","altitude","Year")]
 env.SCCWRP <- env.SCCWRP[!duplicated(env.SCCWRP[c("UniqueID")]),]
-env.SCCWRP <- env.SCCWRP[,c("Watershed","Ag_2000_5K","CODE_21_2000_5K","URBAN_2000_5K","LU_2000_5K","Year")]
+env.SCCWRP <- env.SCCWRP[,c("Watershed","Ag_2000_5K","CODE_21_2000_5K","URBAN_2000_5K","LU_2000_5K","altitude","Year")]
 env.SCCWRP$Year <- as.numeric(env.SCCWRP$Year)
+env.SCCWRP$altitude <- as.numeric(env.SCCWRP$altitude)
+#env.SCCWRP$Latitude <- as.numeric(env.SCCWRP$Latitude)
+#env.SCCWRP$Longitude <- as.numeric(env.SCCWRP$Longitude)
+#env.SCCWRP$nTaxa <- as.numeric(env.SCCWRP$nTaxa)
 env.SCCWRP$Watershed <- as.factor(env.SCCWRP$Watershed)
 
 #Plotting zeta diversity decay with distance.
 Zeta.ddecay(xy.SCCWRP,data.SCCWRP,order=2,sam=nrow(data.SCCWRP),distance.type="ortho",plot=TRUE)
 
 #Zeta diversity with respect to environmental variables.
-Zeta.msgdm(data.SCCWRP,env.SCCWRP,xy=NULL,sam=1000,order=2)
+zetaTest <- Zeta.msgdm(data.SCCWRP,env.SCCWRP,xy=NULL,sam=nrow(env.SCCWRP),order=2,rescale=FALSE)
 
 #Computes zeta diversity, the number of species shared by multiple assemblages, for a range of orders (number of assemblages or sites), 
 #using combinations of sampled sites, and fits the decline to an exponential and a power law relationship.
-Zeta.decline.mc(data.SCCWRP,xy=NULL,orders=1:10,sam=1000)
+zetaDecay <- Zeta.decline.mc(data.SCCWRP,xy=NULL,orders=1:10,sam=1000)
 
-#Clustering samples into groups based on maximizing overlap in taxa present.
+#Analyzing trends relating to taxonomic overlap between samples.
 library(ade4)
-comDist <- dist.binary(data.SCCWRP,method=1,diag=FALSE,upper=FALSE)
-comClust <- hclust(comDist,method="complete")
-comGroups <- cutree(comClust,h=0.8)
-comGroups <- as.data.frame(comGroups)
-data.SCCWRP.subset <- merge(data.SCCWRP,comGroups,by="row.names",all.x=TRUE)
-data.SCCWRP.subset <- subset(data.SCCWRP.subset,comGroups==1)
-dev.off()
-plot(as.dendrogram(comClust),horiz=TRUE)
-rect.hclust(comClust,h=0.6)
-
 library(proxy)
 library(dendextend)
-labels.SCCWRP <- selected[,c("UniqueID","Watershed","Ag_2000_5K","CODE_21_2000_5K","URBAN_2000_5K","LU_2000_5K","altitude","nTaxa","Latitude","Longitude")]
+labels.SCCWRP <- selected[,c("UniqueID","Watershed","Ag_2000_5K","CODE_21_2000_5K","URBAN_2000_5K","LU_2000_5K","altitude","nTaxa","Latitude","Longitude","Year","CSCI")]
 labels.SCCWRP <- labels.SCCWRP[!duplicated(labels.SCCWRP[c("UniqueID")]),]
 labels.SCCWRP <- data.frame(labels.SCCWRP[,-1],row.names=labels.SCCWRP[,1])
-colnames(labels.SCCWRP) <- c("Watershed","Ag_2000_5K","CODE_21_2000_5K","URBAN_2000_5K","LU_2000_5K","altitude","nTaxa","Latitude","Longitude")
+colnames(labels.SCCWRP) <- c("Watershed","Ag_2000_5K","CODE_21_2000_5K","URBAN_2000_5K","LU_2000_5K","altitude","nTaxa","Latitude","Longitude","Year","CSCI")
 data.SCCWRP.tagged <- merge(data.SCCWRP,labels.SCCWRP,by="row.names")
-
 #MDS plotting of Jaccard similarity between samples.
 mds <- cmdscale(dist(data.SCCWRP,method="binary"), eig=TRUE,k=2)
-mdsPlot <- data.frame(mds$points, group=data.SCCWRP.tagged$Latitude)
+mdsPlot <- data.frame(mds$points, group=data.SCCWRP.tagged$Watershed)
 #For continuous factors.
 ggplot(mdsPlot)+geom_point(aes(x = X1,y = X2, color = group))+ scale_colour_gradientn(colours=rainbow(4))
 #For discrete factors.
-ggplot(mdsPlot)+geom_point(aes(x = X1,y = X2, color = group))+ theme(legend.position="none")
+ggplot(mdsPlot)+geom_point(aes(x = X1,y = X2, color = group))+ theme(legend.position="right")
