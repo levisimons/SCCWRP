@@ -189,6 +189,7 @@ for(i in 1:length(LUquantile)){
 }
 colnames(zetaAnalysis) <- c("zetaExpIntercept","zetaExpExponent","zetaExpAIC","zetaPLIntercept","zetaPLExponent","zetaPLAIC","zetaFFGExpIntercept","zetaFFGExpExponent","zetaFFGExpAIC","zetaFFGPLIntercept","zetaFFGPLExponent","zetaFFGPLAIC","GammaShapeParameter","GammaShapeSE","GammaRateParameter","GammaRateSE","LULow","LUHigh")
 zetaAnalysis <- head(zetaAnalysis,-1)
+write.table(zetaAnalysis,"ZetaAndFFGLUTrends.txt",quote=FALSE,sep="\t",row.names = FALSE)
 
 
 #####################################################################
