@@ -20,6 +20,21 @@ GISBioData <- subset(GISBioData, MeasurementType == "benthic macroinvertebrate r
 GISBioData <- GISBioData[!duplicated(GISBioData[,c("UniqueID","FinalID","Count")]),]
 #Read in sample metadata.
 SCCWRP <- read.table("CSCI.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+#Read in functional feeding group for each taxon.
+#Abbreviations used in denoting functional feeding groups are as follows ( http://www.safit.org/Docs/CABW_std_taxonomic_effort.pdf ):
+#P= predator MH= macrophyte herbivore OM= omnivore
+#PA= parasite PH= piercer herbivore XY= xylophage (wood eater)
+#CG= collector-gatherer SC= scraper
+#CF= collector filterer SH= shredder 
+FFG <- read.table("metadata.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+# Filter data so only known functional feeding groups are kept.
+FFG <- subset(FFG, FunctionalFeedingGroup != "")
+# Generate functional feeding group data frame.
+FFG <- FFG[,c("FinalID","LifeStageCode","FunctionalFeedingGroup")]
+FFG <- subset(FFG,LifeStageCode=="L" | LifeStageCode=="X" | FinalID=="Hydrophilidae" | FinalID=="Hydraenidae")
+#Merge in functional feeding groups into sample data.
+GISBioData <- join(GISBioData,FFG[,c("FinalID","FunctionalFeedingGroup")],by=c("FinalID"))
+
 #How many samples per watershed?
 groupNum=20
 
@@ -57,48 +72,81 @@ for(i in 1:length(LUquantile)){
   }
   if(i < length(LUquantile)){
     selected <- GISBioDataLargeWS
-    #Get zeta diversity decay parameters for the same set of samples within a given land use band.
     selected <- arrange(selected,Year,UniqueID)
+    #Get zeta diversity decay parameters for taxonomic diversity for the same set of samples within a given land use band.
     eLSAInput <- as.data.frame(unique(selected$FinalID))
-    colnames(eLSAInput)<-c("FinalID")
+    colnames(eLSAInput) <- c("FinalID")
     eLSAInput <- as.data.frame(eLSAInput[order(as.character(eLSAInput$FinalID)),])
-    colnames(eLSAInput)<-c("FinalID")
+    colnames(eLSAInput) <- c("FinalID")
     taxa <- eLSAInput
-    
-    #Add the relative taxa abundances by column to a new dataframe.
-    #The rows are the unique taxa in a given subset of data.
     selected <- selected[order(selected$Year,selected$UniqueID,selected$FinalID),]
+    #Get zeta diversity decay parameters for functional feeding group diversity for the same set of samples within a given land use band.
+    FFGInput <- as.data.frame(unique(selected$FunctionalFeedingGroup))
+    colnames(FFGInput) <- c("FunctionalFeedingGroup")
+    FFGInput <- as.data.frame(FFGInput[order(as.character(FFGInput$FunctionalFeedingGroup)),])
+    colnames(FFGInput) <- c("FunctionalFeedingGroup")
+    FFGInput <- na.omit(FFGInput)
+    FFgroups <- FFGInput
     i=0
     for(ID in unique(selected$UniqueID)){
+      #Add the relative taxa abundances by column to a new dataframe.
+      #The rows are the unique taxa in a given subset of data.
       tmp <- filter(selected, UniqueID == ID)[,c("FinalID","Measurement","UniqueID")]
       tmp <- as.data.frame(tmp[order(tmp$FinalID),])
       tmp <- tmp[-c(3)]
-      colnames(tmp)<-c("FinalID",ID)
+      colnames(tmp) <- c("FinalID",ID)
       tmp <- tmp %>% group_by(FinalID) %>% summarise_if(is.numeric,mean,na.rm=TRUE)
       tmp <- join(tmp,taxa,type="full",by=c("FinalID"))
       tmp <- as.data.frame(tmp[order(tmp$FinalID),])
       eLSAInput <- cbind(eLSAInput,tmp)
       eLSAInput <- eLSAInput[,!duplicated(colnames(eLSAInput))]
+      #Compute functional feeding group diversity by sample and sample grouping.
+      tmp2 <- filter(selected, UniqueID == ID)[,c("FunctionalFeedingGroup","Count","UniqueID")]
+      tmp2 <- as.data.frame(tmp2[order(tmp2$FunctionalFeedingGroup),])
+      tmp2 <- tmp2[-c(3)]
+      colnames(tmp2) <-  c("FunctionalFeedingGroup",ID)
+      tmp2 <- tmp2 %>% group_by(FunctionalFeedingGroup) %>% summarise_if(is.numeric,sum,na.rm=TRUE)
+      tmp2 <- join(tmp2,FFgroups,type="full",by=c("FunctionalFeedingGroup"))
+      tmp2 <- as.data.frame(tmp2[order(tmp2$FunctionalFeedingGroup),])
+      tmp2 <- tmp2[!is.na(tmp2$FunctionalFeedingGroup),]
+      FFGInput <- cbind(FFGInput,tmp2)
+      FFGInput <-  FFGInput[,!duplicated(colnames(FFGInput))]
     }
     
-    #Generate a presence/absence dataframe for zeta diversity analysis.
+    #Generate a presence/absence dataframe for zeta diversity analysis of taxa.
     #Rows for samples, columns for taxa IDs.
     eLSAInput[is.na(eLSAInput)] <- 0
     eLSANames <- eLSAInput$FinalID
     data.SCCWRP <- as.data.frame(t(eLSAInput[,-c(1)]))
     colnames(data.SCCWRP) <- eLSANames
     data.SCCWRP[data.SCCWRP > 0] <- 1
+    #Generate a presence/absence dataframe for zeta diversity analysis of functional feeding groups.
+    #Rows for samples, columns for functional feeding group types.
+    FFGInput[is.na(FFGInput)] <- 0
+    FFGNames <- FFGInput$FunctionalFeedingGroup
+    ffg.SCCWRP <- as.data.frame(t(FFGInput[,-c(1)]))
+    colnames(ffg.SCCWRP) <- FFGNames
+    ffg.SCCWRP[ffg.SCCWRP > 0] <- 1
     
+    dat <- data.frame()
     #Computes zeta diversity, the number of species shared by multiple assemblages, for a range of orders (number of assemblages or sites), 
     #using combinations of sampled sites, and fits the decline to an exponential and a power law relationship.
     zetaDecay <- Zeta.decline.mc(data.SCCWRP,xy=NULL,orders=1:10,sam=1000)
-    dat <- data.frame()
     dat[1,1] <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
     dat[1,2] <- zetaDecay$zeta.exp$coefficients[2] #Zeta diversity exponential decay exponent.
     dat[1,3] <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
     dat[1,4] <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
     dat[1,5] <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
     dat[1,6] <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
+    #Computes zeta diversity, the number of functional feeding groups shared by multiple assemblages, for a range of orders (number of assemblages or sites), 
+    #using combinations of sampled sites, and fits the decline to an exponential and a power law relationship.
+    zetaDecay <- Zeta.decline.mc(ffg.SCCWRP,xy=NULL,orders=1:10,sam=1000)
+    dat[1,7] <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
+    dat[1,8] <- zetaDecay$zeta.exp$coefficients[2] #Zeta diversity exponential decay exponent.
+    dat[1,9] <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
+    dat[1,10] <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
+    dat[1,11] <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
+    dat[1,12] <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
     
     #Get the frequency of pairs of taxa showing up by watershed.
     #For example, a pair showing up three times in one watershed, and eight times in a second watershed,
@@ -129,17 +177,18 @@ for(i in 1:length(LUquantile)){
     colnames(CAMatch) <- c("V1","V2","NumWS")
     hist(CAMatch$NumWS,xlim=c(0,63),ylim=c(0,40000))
     histDecay <- fitdist(CAMatch$NumWS,"gamma",method="mle")
-    dat[1,7] <- as.numeric(histDecay$estimate[1]) #Gamma distribution histogram fit shape parameter.
-    dat[1,8] <- as.numeric(histDecay$sd[1]) #Gamma distribution histogram fit shape parameter standard error.
-    dat[1,9] <- as.numeric(histDecay$estimate[2])#Gamma distribution histogram fit rate parameter.
-    dat[1,10] <- as.numeric(histDecay$sd[2]) #Gamma distribution histogram fit rate parameter standard error.
+    dat[1,13] <- as.numeric(histDecay$estimate[1]) #Gamma distribution histogram fit shape parameter.
+    dat[1,14] <- as.numeric(histDecay$sd[1]) #Gamma distribution histogram fit shape parameter standard error.
+    dat[1,15] <- as.numeric(histDecay$estimate[2])#Gamma distribution histogram fit rate parameter.
+    dat[1,16] <- as.numeric(histDecay$sd[2]) #Gamma distribution histogram fit rate parameter standard error.
+    dat[1,17] <- LULow
+    dat[1,18] <- LUHigh
     print(dat)
   }
   zetaAnalysis <- rbind(zetaAnalysis,dat)
 }
-colnames(zetaAnalysis) <- c("zetaExpIntercept","zetaExpExponent","zetaExpAIC","zetaPLIntercept","zetaPLExponent","zetaPLAIC","GammaShapeParameter","GammaShapeSE","GammaRateParameter","GammaRateSE")
-
-
+colnames(zetaAnalysis) <- c("zetaExpIntercept","zetaExpExponent","zetaExpAIC","zetaPLIntercept","zetaPLExponent","zetaPLAIC","zetaFFGExpIntercept","zetaFFGExpExponent","zetaFFGExpAIC","zetaFFGPLIntercept","zetaFFGPLExponent","zetaFFGPLAIC","GammaShapeParameter","GammaShapeSE","GammaRateParameter","GammaRateSE","LULow","LUHigh")
+zetaAnalysis <- head(zetaAnalysis,-1)
 
 
 #####################################################################
