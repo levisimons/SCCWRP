@@ -34,7 +34,8 @@ FFG <- FFG[,c("FinalID","LifeStageCode","FunctionalFeedingGroup")]
 FFG <- subset(FFG,LifeStageCode=="L" | LifeStageCode=="X" | FinalID=="Hydrophilidae" | FinalID=="Hydraenidae")
 #Merge in functional feeding groups into sample data.
 GISBioData <- join(GISBioData,FFG[,c("FinalID","FunctionalFeedingGroup")],by=c("FinalID"))
-
+FFGCounts <- na.omit(as.data.frame(unique(GISBioData$FunctionalFeedingGroup)))
+colnames(FFGCounts) <- c("FunctionalFeedingGroups")
 #How many samples per watershed?
 groupNum=20
 
@@ -183,11 +184,15 @@ for(i in 1:length(LUquantile)){
     dat[1,16] <- as.numeric(histDecay$sd[2]) #Gamma distribution histogram fit rate parameter standard error.
     dat[1,17] <- LULow
     dat[1,18] <- LUHigh
+    #Get relative abundances of taxa by functional feeding groups across a set of samples.
+    FFGTotals <- t(as.data.frame(rowSums(FFGInput[,2:ncol(FFGInput)]) / sum(rowSums(FFGInput[,2:ncol(FFGInput)]))))
+    rownames(FFGTotals) <- 1:nrow(FFGTotals)
+    dat <- cbind(dat,FFGTotals)
     print(dat)
   }
   zetaAnalysis <- rbind(zetaAnalysis,dat)
 }
-colnames(zetaAnalysis) <- c("zetaExpIntercept","zetaExpExponent","zetaExpAIC","zetaPLIntercept","zetaPLExponent","zetaPLAIC","zetaFFGExpIntercept","zetaFFGExpExponent","zetaFFGExpAIC","zetaFFGPLIntercept","zetaFFGPLExponent","zetaFFGPLAIC","GammaShapeParameter","GammaShapeSE","GammaRateParameter","GammaRateSE","LULow","LUHigh")
+colnames(zetaAnalysis) <- c("zetaExpIntercept","zetaExpExponent","zetaExpAIC","zetaPLIntercept","zetaPLExponent","zetaPLAIC","zetaFFGExpIntercept","zetaFFGExpExponent","zetaFFGExpAIC","zetaFFGPLIntercept","zetaFFGPLExponent","zetaFFGPLAIC","GammaShapeParameter","GammaShapeSE","GammaRateParameter","GammaRateSE","LULow","LUHigh","CFra","CGra","MHra","OMra","Pra","PHra","SCra","SHra")
 zetaAnalysis <- head(zetaAnalysis,-1)
 write.table(zetaAnalysis,"ZetaAndFFGLUTrends.txt",quote=FALSE,sep="\t",row.names = FALSE)
 
