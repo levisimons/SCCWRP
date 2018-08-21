@@ -38,18 +38,19 @@ FFGCounts <- na.omit(as.data.frame(unique(GISBioData$FunctionalFeedingGroup)))
 colnames(FFGCounts) <- c("FunctionalFeedingGroups")
 #How many samples per watershed?
 groupNum=20
+#Select watersheds with a large enough set of samples for analysis.
+watersheds <- as.data.frame(table(SCCWRP$Watershed))
+colnames(watersheds) <- c("Watershed","Samples")
+GISBioData <- join(GISBioData,watersheds,by=c("Watershed"))
+#Get samples only found in more heavily sampled watersheds.
+GISBioDataLargeWS <- subset(GISBioData,Samples>=groupNum)
 
 #Look through watersheds which are sufficiently sampled and do the following:
 #Divide the entire data set, composed of heavily sampled watersheds, into quantiles based on land use.
 #Calculate zeta diversity of each land use band.
 #Determine the histogram of the number of watersheds each co-occurrence occurs in.
 #Calculate the parameters of the gamma distribution fit to this histogram.
-#Select watersheds with a large enough set of samples for analysis.
 zetaAnalysis <- data.frame()
-watersheds <- subset(as.data.frame(table(SCCWRP$Watershed)),Freq>=groupNum)
-colnames(watersheds) <- c("Watershed","Samples")
-#Get samples only found in more heavily sampled watersheds.
-GISBioDataLargeWS <- subset(GISBioData,Watershed %in% watersheds$Watershed)
 LUquantile <- quantile(GISBioDataLargeWS$LU_2000_5K,probs=seq(0,1,0.1))#To get land use quantiles.
 for(i in 1:length(LUquantile)){
   watersheds <- subset(as.data.frame(table(SCCWRP$Watershed)),Freq>=groupNum)
@@ -87,6 +88,7 @@ for(i in 1:length(LUquantile)){
     FFGInput <- as.data.frame(FFGInput[order(as.character(FFGInput$FunctionalFeedingGroup)),])
     colnames(FFGInput) <- c("FunctionalFeedingGroup")
     FFGInput <- na.omit(FFGInput)
+    FFGrand <- FFGInput
     FFgroups <- FFGInput
     i=0
     for(ID in unique(selected$UniqueID)){
@@ -112,6 +114,13 @@ for(i in 1:length(LUquantile)){
       tmp2 <- tmp2[!is.na(tmp2$FunctionalFeedingGroup),]
       FFGInput <- cbind(FFGInput,tmp2)
       FFGInput <-  FFGInput[,!duplicated(colnames(FFGInput))]
+      #Randomly assign functional feeding groups to their sample counts to eventually test how
+      #far from random their relative abundances are.
+      tmp3 <- tmp2[sample(nrow(tmp2)),]
+      tmp3$FunctionalFeedingGroup <- tmp2$FunctionalFeedingGroup
+      colnames(tmp3) <-  c("FunctionalFeedingGroup",ID)
+      FFGrand <- cbind(FFGrand,tmp3)
+      FFGrand <-  FFGrand[,!duplicated(colnames(FFGrand))]
     }
     
     #Generate a presence/absence dataframe for zeta diversity analysis of taxa.
@@ -128,9 +137,16 @@ for(i in 1:length(LUquantile)){
     ffg.SCCWRP <- as.data.frame(t(FFGInput[,-c(1)]))
     colnames(ffg.SCCWRP) <- FFGNames
     ffg.SCCWRP[ffg.SCCWRP > 0] <- 1
+    #Generate a presence/absence dataframe for zeta diversity analysis of randomly assigned functional feeding groups.
+    #Rows for samples, columns for functional feeding group types.
+    FFGrand[is.na(FFGrand)] <- 0
+    FFGrandNames <- FFGrand$FunctionalFeedingGroup
+    ffg.rand.SCCWRP <- as.data.frame(t(FFGrand[,-c(1)]))
+    colnames(ffg.rand.SCCWRP) <- FFGrandNames
+    ffg.rand.SCCWRP[ffg.rand.SCCWRP > 0] <- 1
     
     dat <- data.frame()
-    #Computes zeta diversity, the number of species shared by multiple assemblages, for a range of orders (number of assemblages or sites), 
+    #Compute zeta diversity, the number of species shared by multiple assemblages, for a range of orders (number of assemblages or sites), 
     #using combinations of sampled sites, and fits the decline to an exponential and a power law relationship.
     zetaDecay <- Zeta.decline.mc(data.SCCWRP,xy=NULL,orders=1:10,sam=1000)
     dat[1,1] <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
@@ -139,7 +155,7 @@ for(i in 1:length(LUquantile)){
     dat[1,4] <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
     dat[1,5] <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
     dat[1,6] <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
-    #Computes zeta diversity, the number of functional feeding groups shared by multiple assemblages, for a range of orders (number of assemblages or sites), 
+    #Compute zeta diversity, the number of functional feeding groups shared by multiple assemblages, for a range of orders (number of assemblages or sites), 
     #using combinations of sampled sites, and fits the decline to an exponential and a power law relationship.
     zetaDecay <- Zeta.decline.mc(ffg.SCCWRP,xy=NULL,orders=1:10,sam=1000)
     dat[1,7] <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
@@ -148,6 +164,15 @@ for(i in 1:length(LUquantile)){
     dat[1,10] <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
     dat[1,11] <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
     dat[1,12] <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
+    #Compute zeta diversity, the number of functional feeding groups shared by multiple assemblages, for a range of orders (number of assemblages or sites), 
+    #using combinations of sampled sites, and fits the decline to an exponential and a power law relationship.
+    zetaDecay <- Zeta.decline.mc(ffg.rand.SCCWRP,xy=NULL,orders=1:10,sam=1000)
+    dat[1,13] <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
+    dat[1,14] <- zetaDecay$zeta.exp$coefficients[2] #Zeta diversity exponential decay exponent.
+    dat[1,15] <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
+    dat[1,16] <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
+    dat[1,17] <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
+    dat[1,18] <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
     
     #Get the frequency of pairs of taxa showing up by watershed.
     #For example, a pair showing up three times in one watershed, and eight times in a second watershed,
@@ -178,12 +203,12 @@ for(i in 1:length(LUquantile)){
     colnames(CAMatch) <- c("V1","V2","NumWS")
     hist(CAMatch$NumWS,xlim=c(0,63),ylim=c(0,40000))
     histDecay <- fitdist(CAMatch$NumWS,"gamma",method="mle")
-    dat[1,13] <- as.numeric(histDecay$estimate[1]) #Gamma distribution histogram fit shape parameter.
-    dat[1,14] <- as.numeric(histDecay$sd[1]) #Gamma distribution histogram fit shape parameter standard error.
-    dat[1,15] <- as.numeric(histDecay$estimate[2])#Gamma distribution histogram fit rate parameter.
-    dat[1,16] <- as.numeric(histDecay$sd[2]) #Gamma distribution histogram fit rate parameter standard error.
-    dat[1,17] <- LULow
-    dat[1,18] <- LUHigh
+    dat[1,19] <- as.numeric(histDecay$estimate[1]) #Gamma distribution histogram fit shape parameter.
+    dat[1,20] <- as.numeric(histDecay$sd[1]) #Gamma distribution histogram fit shape parameter standard error.
+    dat[1,21] <- as.numeric(histDecay$estimate[2])#Gamma distribution histogram fit rate parameter.
+    dat[1,22] <- as.numeric(histDecay$sd[2]) #Gamma distribution histogram fit rate parameter standard error.
+    dat[1,23] <- LULow
+    dat[1,24] <- LUHigh
     #Get relative abundances of taxa by functional feeding groups across a set of samples.
     FFGTotals <- t(as.data.frame(rowSums(FFGInput[,2:ncol(FFGInput)]) / sum(rowSums(FFGInput[,2:ncol(FFGInput)]))))
     rownames(FFGTotals) <- 1:nrow(FFGTotals)
@@ -192,117 +217,94 @@ for(i in 1:length(LUquantile)){
   }
   zetaAnalysis <- rbind(zetaAnalysis,dat)
 }
-colnames(zetaAnalysis) <- c("zetaExpIntercept","zetaExpExponent","zetaExpAIC","zetaPLIntercept","zetaPLExponent","zetaPLAIC","zetaFFGExpIntercept","zetaFFGExpExponent","zetaFFGExpAIC","zetaFFGPLIntercept","zetaFFGPLExponent","zetaFFGPLAIC","GammaShapeParameter","GammaShapeSE","GammaRateParameter","GammaRateSE","LULow","LUHigh","CFra","CGra","MHra","OMra","Pra","PHra","SCra","SHra")
+colnames(zetaAnalysis) <- c("zetaExpIntercept","zetaExpExponent","zetaExpAIC","zetaPLIntercept","zetaPLExponent","zetaPLAIC","zetaFFGExpIntercept","zetaFFGExpExponent","zetaFFGExpAIC","zetaFFGPLIntercept","zetaFFGPLExponent","zetaFFGPLAIC","zetaFFGrandExpIntercept","zetaFFGrandExpExponent","zetaFFGrandExpAIC","zetaFFGrandPLIntercept","zetaFFGrandPLExponent","zetaFFGrandPLAIC","GammaShapeParameter","GammaShapeSE","GammaRateParameter","GammaRateSE","LULow","LUHigh","CFra","CGra","MHra","OMra","Pra","PHra","SCra","SHra")
 zetaAnalysis <- head(zetaAnalysis,-1)
 write.table(zetaAnalysis,"ZetaAndFFGLUTrends.txt",quote=FALSE,sep="\t",row.names = FALSE)
-
+zetaAnalysis <- read.table("ZetaAndFFGLUTrends.txt",header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
 
 #####################################################################
 
-#Run through analysis on SCCWRP archive on a watershed-level scale.
-#Select watersheds with a large enough set of samples for analysis.
-watersheds <- subset(as.data.frame(table(SCCWRP$Watershed)),Freq>=groupNum)
-colnames(watersheds) <- c("Watershed","Samples")
-#Get samples only found in more heavily sampled watersheds.
-GISBioDataLargeWS <- subset(GISBioData,Watershed %in% watersheds$Watershed)
-
-#Read in site data containing biological counts, water chemistry, and land usage
-#values.  If this file is not yet generated then proceed with the following commands
-#to generate it in the first place.
-GISBioData <- read.table("CAGISBioData.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
-#Filter out to taxonomic groups of interest.
-GISBioData <- subset(GISBioData, MeasurementType == "benthic macroinvertebrate relative abundance")
-#Remove duplicate measures.
-GISBioData <- GISBioData[!duplicated(GISBioData[,c("UniqueID","FinalID","Count")]),]
-#Order data by LU_2000_5K.
-GISBioData <- arrange(GISBioData,LU_2000_5K)
-#Add taxa counts by sample.
-tmp <- data.frame(table(GISBioData$UniqueID))
-colnames(tmp) <- c("UniqueID","nTaxa")
-GISBioData <- join(GISBioData,tmp,by=c("UniqueID"))
-#Read in sample metadata.
-SCCWRP <- read.table("CSCI.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
-#Merge in sample altitude.
-GISBioData <- join(GISBioData,SCCWRP[,c("UniqueID","altitude")],by=c("UniqueID"))
-#Get samples per watershed.
-watersheds <- as.data.frame((table(SCCWRP$Watershed)))
-colnames(watersheds) <- c("Watershed","Samples")
-#Get the samples per watershed for watersheds with at least a certain number of samples.
-LargeWatersheds <- subset(watersheds,Samples>=20)
-#Taxa frequency table.
-taxaFreq <- as.data.frame(table(GISBioData$FinalID))
-colnames(taxaFreq) <- c("FinalID","Freq")
-#Find the total number of taxa in the full data set.
-taxaMax <- length(unique(GISBioData$FinalID))
-#Get number of unique LU_2000_5K values.
-sitesNum <- length(unique(GISBioData$UniqueID))
-#Enter number of divisions for subsampling.
-divisionNum = 60
-#Obtain subsampling number.
-sampleNum <- as.integer(sitesNum/divisionNum)
-uniqueSamples <- as.data.frame(unique(GISBioData$UniqueID))
-colnames(uniqueSamples) <- c("UniqueID")
-
-zetaAnalysis <- data.frame()
-for(i in 1:divisionNum){
-  lowNum=(i-1)*sampleNum+1
-  highNum=i*sampleNum
-  GISBioData <- arrange(GISBioData,LU_2000_5K)
-  uniqueSampleSubset <- as.data.frame(uniqueSamples[lowNum:highNum,1])
-  colnames(uniqueSampleSubset) <- c("UniqueID")
-  GISBioDataSubset <- GISBioData[GISBioData$UniqueID %in% as.vector(uniqueSampleSubset$UniqueID),]
-  #Determine the average LU_2000_5K per subsample of sites.
-  meanLU_2000_5K = mean(na.omit(GISBioDataSubset$LU_2000_5K))
-  print(paste(lowNum,highNum,meanLU_2000_5K))
-  #Initialize a data frame where the rows are all of the unique measurements for a given
-  #subset of the data.
-  #Order the data frame by measurement name.
-  selected <- arrange(GISBioDataSubset,Year,UniqueID)
-  
-  #Generating a presence/absence matrix for California SCCWRP data.
-  eLSAInput <- as.data.frame(unique(selected$FinalID))
-  colnames(eLSAInput)<-c("FinalID")
-  eLSAInput <- as.data.frame(eLSAInput[order(as.character(eLSAInput$FinalID)),])
-  colnames(eLSAInput)<-c("FinalID")
-  taxa <- eLSAInput
-  #Add the relative taxa abundances by column to a new dataframe.
-  #The rows are the unique taxa in a given subset of data.
-  selected <- selected[order(selected$Year,selected$UniqueID,selected$FinalID),]
-  for(ID in unique(selected$UniqueID)){
-    tmp <- filter(selected, UniqueID == ID)[,c("FinalID","Measurement","UniqueID")]
-    tmp <- as.data.frame(tmp[order(tmp$FinalID),])
-    tmp <- tmp[-c(3)]
-    colnames(tmp)<-c("FinalID",ID)
-    tmp <- tmp %>% group_by(FinalID) %>% summarise_if(is.numeric,mean,na.rm=TRUE)
-    tmp <- join(tmp,taxa,type="full",by=c("FinalID"))
-    tmp <- as.data.frame(tmp[order(tmp$FinalID),])
-    eLSAInput <- cbind(eLSAInput,tmp)
-    eLSAInput <- eLSAInput[,!duplicated(colnames(eLSAInput))]
+#This portion focuses on generating co-occurrence networks on a HUC-8 watershed scale within the SCCWRP archive.
+#Subsetting waterhedss by land use bands to check for uniformity of co-occurrence network formation
+#within similar watersheds to changes in land use.
+j=0
+sampleNum <- 30 #Number of samples per watershed by land use band to use to generate a co-occurrence network.
+LUquantile <- quantile(GISBioDataLargeWS$LU_2000_5K,probs=seq(0,1,0.1))#To get land use quantiles.
+taxa <- as.data.frame(sort(unique(GISBioDataLargeWS$FinalID)))#Get unique taxa in full data set.
+colnames(taxa) <- c("FinalID")
+eLSAInput <- taxa
+FFgroups <- as.data.frame(sort(unique(GISBioDataLargeWS$FunctionalFeedingGroup)))#Get unique functional feeding groups in full data set.
+FFgroups <- na.omit(FFgroups)
+colnames(FFgroups) <- c("FunctionalFeedingGroup")
+FFGInput <- FFgroups
+for(WS in unique(GISBioDataLargeWS$Watershed)){
+  for(i in 1:length(LUquantile)){
+    LULow <- as.numeric(LUquantile[i])
+    if(i<length(LUquantile)){
+      LUHigh <- as.numeric(LUquantile[i+1])
+    }
+    if(i==length(LUquantile)){
+      LUHigh == 100
+    }
+    if(LULow == 0 & LUHigh == 0){
+      LUSubset <- subset(GISBioDataLargeWS,LU_2000_5K==LULow & Watershed==WS) #Subset samples by aggregated land use and watershed.
+      #print(paste(i-1,i,LULow,LUHigh,WS,length(unique(LUSubset$UniqueID))))
+    }
+    if(LULow != LUHigh){
+      LUSubset <- subset(GISBioDataLargeWS,LU_2000_5K>=LULow & LU_2000_5K < LUHigh & Watershed==WS) #Subset samples by aggregated land use and watershed.
+      #print(paste(i-1,i,LULow,LUHigh,WS,length(unique(LUSubset$UniqueID))))
+    }
+    if(i < length(LUquantile) & length(unique(LUSubset$UniqueID)) >= sampleNum){
+      sampleNames <- sample(unique(LUSubset$UniqueID),sampleNum)
+      selected <- subset(LUSubset, UniqueID %in% sampleNames)
+      j=j+1
+      selected <- arrange(selected,Year,UniqueID)
+      #Get taxonomic diversity for the same set of samples within a given land use band.
+      eLSAInput <- as.data.frame(sort(unique(selected$FinalID)))
+      colnames(eLSAInput) <- c("FinalID")
+      #Get functional feeding group counts for the same set of samples within a given land use band.
+      FFGInput <- as.data.frame(sort(unique(selected$FunctionalFeedingGroup)))
+      colnames(FFGInput) <- c("FunctionalFeedingGroup")
+      FFGInput <- na.omit(FFGInput)
+      #Generate input data frames for co-occurrence network generation with eLSA.
+      for(ID in unique(selected$UniqueID)){
+        #Add the relative taxa abundances by column to a new dataframe.
+        #The rows are the unique taxa in a given subset of data.
+        tmp <- filter(selected, UniqueID == ID)[,c("FinalID","Measurement","UniqueID")]
+        tmp <- as.data.frame(tmp[order(tmp$FinalID),])
+        tmp <- tmp[,c("FinalID","Measurement")]
+        colnames(tmp) <- c("FinalID",ID)
+        tmp <- tmp %>% group_by(FinalID) %>% summarise_if(is.numeric,mean,na.rm=TRUE)
+        tmp <- join(tmp,taxa,type="full",by=c("FinalID"))
+        tmp <- as.data.frame(tmp[order(tmp$FinalID),])
+        eLSAInput <- join(eLSAInput,tmp,by=c("FinalID"))
+        eLSAInput <- eLSAInput[,!duplicated(colnames(eLSAInput))]
+        #Compute functional feeding group diversity by sample and sample grouping.
+        tmp2 <- filter(selected, UniqueID == ID)[,c("FunctionalFeedingGroup","Count","UniqueID")]
+        tmp2 <- as.data.frame(tmp2[order(tmp2$FunctionalFeedingGroup),])
+        tmp2 <- tmp2[!is.na(tmp2$FunctionalFeedingGroup),]
+        tmp2 <- tmp2[,c("FunctionalFeedingGroup","Count")]
+        colnames(tmp2) <-  c("FunctionalFeedingGroup",ID)
+        tmp2 <- tmp2 %>% group_by(FunctionalFeedingGroup) %>% summarise_if(is.numeric,sum,na.rm=TRUE)
+        tmp2[,2] <- tmp2[,2]/sum(na.omit(tmp2[,2]))
+        tmp2 <- join(tmp2,FFgroups,type="full",by=c("FunctionalFeedingGroup"))
+        tmp2 <- as.data.frame(tmp2[order(tmp2$FunctionalFeedingGroup),])
+        FFGInput <- join(FFGInput,tmp2,by=c("FunctionalFeedingGroup"))
+        FFGInput <-  FFGInput[,!duplicated(colnames(FFGInput))]
+      }
+      #Output files for co-occurrence network generation with eLSA for both relative abundances
+      #of genera by sample and for functional feeding groups by sample.
+      eLSAFilename <- paste("GeneraAbundancesWatershed",WS,"LU",LULow,"to",LUHigh,"SampleNum",sampleNum,sep="")
+      FFGFilename <- paste("FFGAbundancesWatershed",WS,"LU",LULow,"to",LUHigh,"SampleNum",sampleNum,sep="")
+      #write.table(eLSAInput,paste(eLSAFilename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
+      #write.table(FFGInput,paste(FFGFilename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
+      spotNum <- 1
+      repNum <- sampleNum
+      eLSACommand = paste("lsa_compute ",eLSAFilename,".txt -r ",repNum," -s ",spotNum," ",eLSAFilename,"Network.txt;",sep="")
+      print(eLSACommand)
+      FFGCommand = paste("lsa_compute ",FFGFilename,".txt -r ",repNum," -s ",spotNum," ",FFGFilename,"Network.txt;",sep="")
+      print(FFGCommand)
+      #print(paste(j,i-1,i,LULow,LUHigh,WS,length(unique(LUSubset$UniqueID)),nrow(eLSAInput),nrow(FFGInput)))
+    }
   }
-  
-  #Generate a presence/absence dataframe for zeta diversity analysis.
-  #Rows for samples, columns for taxa IDs.
-  eLSAInput[is.na(eLSAInput)] <- 0
-  eLSANames <- eLSAInput$FinalID
-  data.SCCWRP <- as.data.frame(t(eLSAInput[,-c(1)]))
-  colnames(data.SCCWRP) <- eLSANames
-  data.SCCWRP[data.SCCWRP > 0] <- 1
-  
-  #Computes zeta diversity, the number of species shared by multiple assemblages, for a range of orders (number of assemblages or sites), 
-  #using combinations of sampled sites, and fits the decline to an exponential and a power law relationship.
-  zetaDecay <- Zeta.decline.mc(data.SCCWRP,xy=NULL,orders=1:10,sam=1000)
-  
-  dat <- data.frame()
-  dat[1,1] <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
-  dat[1,2] <- zetaDecay$zeta.exp$coefficients[2] #Zeta diversity exponential decay exponent.
-  dat[1,3] <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
-  dat[1,4] <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
-  dat[1,5] <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
-  dat[1,6] <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
-  dat[1,7] <- meanLU_2000_5K #Mean land use.
-  
-  zetaAnalysis <- rbind(zetaAnalysis,dat)
-  print(dat)
 }
-colnames(zetaAnalysis) <- c("ZetaExponentialIntercept","ZetaExponentialExponent","ZetaExponentialAIC","ZetaPLIntercept","ZetaPLExponent","ZetaPLAIC","meanLU_2000_5K")
-write.table(zetaAnalysis,"LU_2000_5KSiteSweepCAZeta.txt",quote=FALSE,sep="\t",row.names = FALSE)
