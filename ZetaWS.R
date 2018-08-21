@@ -227,8 +227,7 @@ zetaAnalysis <- read.table("ZetaAndFFGLUTrends.txt",header=TRUE, sep=",",as.is=T
 #This portion focuses on generating co-occurrence networks on a HUC-8 watershed scale within the SCCWRP archive.
 #Subsetting waterhedss by land use bands to check for uniformity of co-occurrence network formation
 #within similar watersheds to changes in land use.
-j=0
-sampleNum <- 30 #Number of samples per watershed by land use band to use to generate a co-occurrence network.
+sampleNum <- 20 #Number of samples per watershed by land use band to use to generate a co-occurrence network.
 LUquantile <- quantile(GISBioDataLargeWS$LU_2000_5K,probs=seq(0,1,0.1))#To get land use quantiles.
 taxa <- as.data.frame(sort(unique(GISBioDataLargeWS$FinalID)))#Get unique taxa in full data set.
 colnames(taxa) <- c("FinalID")
@@ -237,6 +236,7 @@ FFgroups <- as.data.frame(sort(unique(GISBioDataLargeWS$FunctionalFeedingGroup))
 FFgroups <- na.omit(FFgroups)
 colnames(FFgroups) <- c("FunctionalFeedingGroup")
 FFGInput <- FFgroups
+ShellCommand <- as.data.frame(matrix(nrow=0,ncol=1)) #Bind eLSA commands into a data frame to write as a series of shell commands for running each analysis on a cluster.
 for(WS in unique(GISBioDataLargeWS$Watershed)){
   for(i in 1:length(LUquantile)){
     LULow <- as.numeric(LUquantile[i])
@@ -257,7 +257,6 @@ for(WS in unique(GISBioDataLargeWS$Watershed)){
     if(i < length(LUquantile) & length(unique(LUSubset$UniqueID)) >= sampleNum){
       sampleNames <- sample(unique(LUSubset$UniqueID),sampleNum)
       selected <- subset(LUSubset, UniqueID %in% sampleNames)
-      j=j+1
       selected <- arrange(selected,Year,UniqueID)
       #Get taxonomic diversity for the same set of samples within a given land use band.
       eLSAInput <- as.data.frame(sort(unique(selected$FinalID)))
@@ -292,19 +291,113 @@ for(WS in unique(GISBioDataLargeWS$Watershed)){
         FFGInput <- join(FFGInput,tmp2,by=c("FunctionalFeedingGroup"))
         FFGInput <-  FFGInput[,!duplicated(colnames(FFGInput))]
       }
+      
+      #To generate genera relative abundances data for eLSA.
+      #How many years are in each set of samples, and how many samples were taken by year?
+      SamplesByYear <- as.data.frame(setDT(selected)[, .(count = uniqueN(UniqueID)), by = Year])
+      #Determine the number of time points in the eLSA input file for genera relative abundance data.
+      spotNum = nrow(SamplesByYear)
+      #Determine the number of replicates per time point in the eLSA input file.
+      #In order to ensure a uniform number of replicates per year this needs to
+      #be the maximum number of replicates for all of the years available.
+      repNum = max(SamplesByYear$count)
+      #Now insert the replicates with actual data in between the "NA" dummy columns
+      #which ensure that the final eLSA input file has an even number of replicates
+      #per year regardless of the variations in the actual number of sites (replicates)
+      #sampled per year.
+      eLSAtmp <- as.data.frame(eLSAInput[,1])
+      colnames(eLSAtmp) <- c("FinalID")
+      j=1
+      k=1
+      nulCol <- data.frame(matrix(ncol=repNum*spotNum+1,nrow=length(na.omit(unique(selected$FinalID)))))
+      nulCol[,1] <- eLSAInput[,1]
+      eLSANames <- c("FinalID")
+      for(year in unique(selected$Year)){
+        tmp <- filter(selected, Year == year)
+        rep = length(unique(tmp$UniqueID))
+        for(i in 1:repNum){
+          if(i <= rep){
+            repLabel = paste(year,"DoneRep",i,sep="")
+            eLSANames <- c(eLSANames,repLabel)
+            j=j+1
+            k=k+1
+            eLSAtmp[,k] <- eLSAInput[,j]
+          }
+          else{
+            repLabel = as.character(paste(year,"Rep",i,sep=""))
+            eLSANames <- c(eLSANames,repLabel)
+            k=k+1
+            eLSAtmp[,k] <- NA
+          }
+        }
+      }
+      eLSAInput <- eLSAtmp
+      colnames(eLSAInput) <- eLSANames
+      
+      #To generate functional feeding group relative abundances data for eLSA.
+      #How many years are in each set of samples, and how many samples were taken by year?
+      SamplesByYear <- as.data.frame(setDT(selected)[, .(count = uniqueN(UniqueID)), by = Year])
+      #Determine the number of time points in the eLSA input file for genera relative abundance data.
+      spotNum = nrow(SamplesByYear)
+      #Determine the number of replicates per time point in the eLSA input file.
+      #In order to ensure a uniform number of replicates per year this needs to
+      #be the maximum number of replicates for all of the years available.
+      repNum = max(SamplesByYear$count)
+      #Now insert the replicates with actual data in between the "NA" dummy columns
+      #which ensure that the final eLSA input file has an even number of replicates
+      #per year regardless of the variations in the actual number of sites (replicates)
+      #sampled per year.
+      FFGtmp <- as.data.frame(FFGInput[,1])
+      colnames(FFGtmp) <- c("FunctionalFeedingGroup")
+      j=1
+      k=1
+      nulCol <- data.frame(matrix(ncol=repNum*spotNum+1,nrow=length(na.omit(unique(selected$FunctionalFeedingGroup)))))
+      nulCol[,1] <- FFGInput[,1]
+      FFGNames <- c("FunctionalFeedingGroup")
+      for(year in unique(selected$Year)){
+        tmp <- filter(selected, Year == year)
+        rep = length(unique(tmp$UniqueID))
+        for(i in 1:repNum){
+          if(i <= rep){
+            repLabel = paste(year,"DoneRep",i,sep="")
+            FFGNames <- c(FFGNames,repLabel)
+            j=j+1
+            k=k+1
+            FFGtmp[,k] <- FFGInput[,j]
+          }
+          else{
+            repLabel = as.character(paste(year,"Rep",i,sep=""))
+            FFGNames <- c(FFGNames,repLabel)
+            k=k+1
+            FFGtmp[,k] <- NA
+          }
+        }
+      }
+      FFGInput <- FFGtmp
+      colnames(FFGInput) <- FFGNames
+      
       #Output files for co-occurrence network generation with eLSA for both relative abundances
       #of genera by sample and for functional feeding groups by sample.
       eLSAFilename <- paste("GeneraAbundancesWatershed",WS,"LU",LULow,"to",LUHigh,"SampleNum",sampleNum,sep="")
       FFGFilename <- paste("FFGAbundancesWatershed",WS,"LU",LULow,"to",LUHigh,"SampleNum",sampleNum,sep="")
-      #write.table(eLSAInput,paste(eLSAFilename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
-      #write.table(FFGInput,paste(FFGFilename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
-      spotNum <- 1
-      repNum <- sampleNum
+      write.table(eLSAInput,paste(eLSAFilename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
+      write.table(FFGInput,paste(FFGFilename,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
       eLSACommand = paste("lsa_compute ",eLSAFilename,".txt -r ",repNum," -s ",spotNum," ",eLSAFilename,"Network.txt;",sep="")
       print(eLSACommand)
       FFGCommand = paste("lsa_compute ",FFGFilename,".txt -r ",repNum," -s ",spotNum," ",FFGFilename,"Network.txt;",sep="")
       print(FFGCommand)
-      #print(paste(j,i-1,i,LULow,LUHigh,WS,length(unique(LUSubset$UniqueID)),nrow(eLSAInput),nrow(FFGInput)))
+      ShellCommand <- rbindlist(list(ShellCommand,data.table(eLSACommand),data.table(FFGCommand)), use.names=FALSE)
+      #print(paste(i-1,i,LULow,LUHigh,WS,length(unique(LUSubset$UniqueID)),nrow(eLSAInput),nrow(FFGInput)))
     }
   }
 }
+
+#Split command outputs into parts to make smaller lists of shell commands.
+div <- 4 #Number of shell scripts to run eLSA commands.
+n <- nrow(ShellCommand)/div #Number of eLSA commands per script.
+nr <- nrow(ShellCommand)
+test <- split(ShellCommand, rep(1:ceiling(nr/n), each=n, length.out=nr))
+for(i in 1:div){
+  write.table(test[i],paste(i,".sh",sep=""),quote=FALSE,sep="\t",row.names = FALSE,col.names=FALSE)
+}
+
