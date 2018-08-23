@@ -11,6 +11,7 @@ library(MASS)
 library(zetadiv)
 library(magrittr)
 library(stats)
+library(CINNA)
 
 #Check for co-occurrence frequencies by watershed in the SCCWRP data set.
 setwd("~/Desktop/SCCWRP")
@@ -409,7 +410,7 @@ for(i in 1:div){
 library(igraph)
 library(network)
 library(stringr)
-choice=1# 1 for functional feeding group networks and 2 for genera networks.
+choice=2# 1 for functional feeding group networks and 2 for genera networks.
 #Read in co-occurrence networks and analyze their topologies.
 if(choice==1){networkfiles <- Sys.glob("FFGAbundances*Network.txt")}#Functional feeding group networks.
 FFGTallyCov <- data.frame() #Used to tally organism counts by functional feeding groups per set of samples used to generate co-occurrence networks.
@@ -471,12 +472,12 @@ for(networkFile in networkfiles){
     adj <- as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency")
     C <- network.density(adj)
     # Calculate the average network path length
-    L <- mean_distance(networkgraphCon,directed=FALSE)
+    L <- mean_distance(networkgraph,directed=FALSE)
     # Calculate the log-ratio of the average network path length to that of its corresponding random network.
     networkRandLength <- 0.5+((log(networkNodecount)-0.5772156649)/log(k))
     l_rL <- log(L/networkRandLength)
     # Calculate the clustering coefficient
-    Cl <- transitivity(networkgraphCon,type="globalundirected",isolate="zero")
+    Cl <- transitivity(networkgraph,type="globalundirected",isolate="zero")
     # Calculate the log-ratio of the clustering coefficient to that of its corresponding random network.
     l_rCl <- log(Cl/(k/networkNodecount))
   }
@@ -491,7 +492,7 @@ for(networkFile in networkfiles){
       FFGTallyCon <- as.data.table(table(unlist(networkdataCon[,c("X","Y")])))
       colnames(FFGTallyCon) <- c("FunctionalFeedingGroup","N_con")
       FFGTallyCon <- merge(FFGTallyCon,FFgroups,all=TRUE)
-      FFGTallyCon$FunctionalFeedingGroup <- as.character(FFGTally$FunctionalFeedingGroup)
+      FFGTallyCon$FunctionalFeedingGroup <- as.character(FFGTallyCon$FunctionalFeedingGroup)
       FFGTallyCon$N_con <- as.numeric(as.character(FFGTallyCon$N_con))
       FFGTallyCon <- arrange(FFGTallyCon,FunctionalFeedingGroup) 
     }
@@ -576,7 +577,7 @@ for(networkFile in networkfiles){
       FFGTallyCov <- as.data.table(table(unlist(networkdataCov[,c("X","Y")])))
       colnames(FFGTallyCov) <- c("FunctionalFeedingGroup","N_cov")
       FFGTallyCov <- merge(FFGTallyCov,FFgroups,all=TRUE)
-      FFGTallyCov$FunctionalFeedingGroup <- as.character(FFGTally$FunctionalFeedingGroup)
+      FFGTallyCov$FunctionalFeedingGroup <- as.character(FFGTallyCov$FunctionalFeedingGroup)
       FFGTallyCov$N_cov <- as.numeric(as.character(FFGTallyCov$N_cov))
       FFGTallyCov <- arrange(FFGTallyCov,FunctionalFeedingGroup) 
     }
@@ -671,23 +672,34 @@ for(networkFile in networkfiles){
       PH_con <- FFGTallyCon[FFGTallyCon$FunctionalFeedingGroup=="PH",2]
       SC_con <- FFGTallyCon[FFGTallyCon$FunctionalFeedingGroup=="SC",2]
       SH_con <- FFGTallyCon[FFGTallyCon$FunctionalFeedingGroup=="SH",2]
+      componentNum <- components(networkgraphCon)
+      if(componentNum$no==1){
+        Centrality_con <- CINNA::calculate_centralities(networkgraphCon)
+        print(paste(Watershed,MidLU,"con"))
+        print(Centrality_con$`subgraph centrality scores`)
+      }
+      componentNum <- components(networkgraphCov)
+      if(componentNum$no==1){
+        Centrality_cov <- CINNA::calculate_centralities(networkgraphCov)
+        print(paste(Watershed,MidLU,"cov"))
+        print(Centrality_cov$`subgraph centrality scores`)
+      }
       dat <- list(networkFile,Watershed,MidLU,Network_size,Network_sizeCov,Network_sizeCon,C,cov_C,con_C,Cl,cov_Cl,con_Cl,l_rCl,l_cov_rCl,l_con_rCl,L,cov_L,con_L,l_rL,l_cov_rL,l_con_rL,M,cov_M,con_M,zeta,zeta_Cov,zeta_Con,meanStrength,meanStrength_Cov,meanStrength_Con,Pm,CF_cov,CG_cov,MH_cov,OM_cov,P_cov,PH_cov,SC_cov,SH_cov,CF_con,CG_con,MH_con,OM_con,P_con,PH_con,SC_con,SH_con)
     }
     if(choice==2){
-      dat <- list(networkFile,Watershed,MidLU,Network_size,Network_sizeCov,Network_sizeCon,C,cov_C,con_C,Cl,cov_Cl,con_Cl,l_rCl,l_cov_rCl,l_con_rCl,L,cov_L,con_L,l_rL,l_cov_rL,l_con_rL,M,cov_M,con_M,zeta,zeta_Cov,zeta_Con,meanStrength,meanStrength_Cov,meanStrength_Con,Pm)
+      dat <- list(networkFile,Watershed,MidLU,Network_size,Network_sizeCov,Network_sizeCon,C,cov_C,con_C,Cl,cov_Cl,con_Cl,l_rCl,l_cov_rCl,l_con_rCl,L,cov_L,con_L,l_rL,l_cov_rL,l_con_rL,M,cov_M,con_M,zeta,zeta_Cov,zeta_Con,meanStrength,meanStrength_Cov,meanStrength_Con,Pm,lambda_network_m)
     }
     dat <- data.frame(t(unlist(dat)))
     networkAnalysis <- rbind(networkAnalysis,dat)
-    print(dat)
+    #print(dat)
   }
 }
 if(choice==1){
   colnames(networkAnalysis) <- c("networkFile","Watershed","MidLU","Network_size","Network_sizeCov","Network_sizeCon","C","cov_C","con_C","Cl","cov_Cl","con_Cl","l_rCl","l_cov_rCl","l_con_rCl","L","cov_L","con_L","l_rL","l_cov_rL","l_con_rL","M","cov_M","con_M","zeta","zeta_Cov","zeta_Con","meanStrength","meanStrength_Cov","meanStrength_Con","Pm","CF_cov","CG_cov","MH_cov","OM_cov","P_cov","PH_cov","SC_cov","SH_cov","CF_con","CG_con","MH_con","OM_con","P_con","PH_con","SC_con","SH_con")
 }
 if(choice==2){
-  colnames(networkAnalysis) <- c("networkFile","Watershed","MidLU","Network_size","Network_sizeCov","Network_sizeCon","C","cov_C","con_C","Cl","cov_Cl","con_Cl","l_rCl","l_cov_rCl","l_con_rCl","L","cov_L","con_L","l_rL","l_cov_rL","l_con_rL","M","cov_M","con_M","zeta","zeta_Cov","zeta_Con","meanStrength","meanStrength_Cov","meanStrength_Con","Pm")
+  colnames(networkAnalysis) <- c("networkFile","Watershed","MidLU","Network_size","Network_sizeCov","Network_sizeCon","C","cov_C","con_C","Cl","cov_Cl","con_Cl","l_rCl","l_cov_rCl","l_con_rCl","L","cov_L","con_L","l_rL","l_cov_rL","l_con_rL","M","cov_M","con_M","zeta","zeta_Cov","zeta_Con","meanStrength","meanStrength_Cov","meanStrength_Con","Pm","lambda_network_m")
 }
-
 networkAnalysis[networkAnalysis=="-Inf"] <- NA
 networkAnalysis[networkAnalysis=="Inf"] <- NA
 networkAnalysis[networkAnalysis=="NaN"] <- NA
@@ -695,21 +707,25 @@ cols <- 3:ncol(networkAnalysis)
 networkAnalysis[,cols] %<>% lapply(function(x) as.numeric(as.character(x)))
 networkAnalysis <- arrange(networkAnalysis,Watershed,MidLU)
 
+#Plot trends in network topology.
 dev.off()
 for(WS in unique(networkAnalysis$Watershed)){
   test <- subset(networkAnalysis,Watershed==WS)
-  plot(networkAnalysis$MidLU,networkAnalysis$CF_cov,type="l",xlim=c(0,100),ylim=c(0,3))
+  plot(networkAnalysis$MidLU,networkAnalysis$lambda_network_m,type="p",xlim=c(0,100),ylim=c(0,9))
+  abline(v=unlist(unique(test$MidLU)),lty=2)
+  lines(smooth.spline(networkAnalysis$MidLU,networkAnalysis$lambda_network_m,df=3),col="red")
   par(new=T)
 }
 
 #Regression between network parameters.
+dev.off()
 library(Hmisc)
 library(corrplot)
 library("PerformanceAnalytics")
 #Each significance level is associated to a symbol : p-values(0, 0.001, 0.01, 0.05, 0.1, 1) <=> symbols(“***”, “**”, “*”, “.”, " “)
 chart.Correlation(networkAnalysis[,c("MidLU","zeta_Cov","cov_M","cov_C","meanStrength_Cov","l_cov_rL","l_cov_rCl","Network_sizeCov")], histogram=FALSE, method=c("spearman"))
 chart.Correlation(networkAnalysis[,c("MidLU","zeta_Con","con_M","con_C","meanStrength_Con","l_con_rL","l_con_rCl","Network_sizeCon")], histogram=FALSE, method="spearman")
-chart.Correlation(networkAnalysis[,c("MidLU","zeta","M","C","meanStrength","l_rL","l_rCl","Network_size","Pm")], histogram=FALSE, method=c("spearman"))
+chart.Correlation(networkAnalysis[,c("MidLU","zeta","M","C","meanStrength","l_rL","l_rCl","Network_size","Pm","lambda_network_m")], histogram=FALSE, method=c("spearman"))
 
 chart.Correlation(networkAnalysis[,c("MidLU","CF_cov","CG_cov","MH_cov","OM_cov","P_cov","PH_cov","SC_cov","SH_cov")], histogram=FALSE, method=c("spearman"))
 chart.Correlation(networkAnalysis[,c("MidLU","CF_con","CG_con","MH_con","OM_con","P_con","PH_con","SC_con","SH_con")], histogram=FALSE, method=c("spearman"))
@@ -717,3 +733,19 @@ res.aov2 <- aov(zeta ~ Watershed + MidLU + Watershed:MidLU, data=networkAnalysis
 summary(res.aov2)
 plot(res.aov2,1)
 plot(res.aov2,2)
+
+CINNA::pca_centralities(CINNA::calculate_centralities(kangaroo))
+componentNum <- components(networkgraphCon)
+if(componentNum$no==1){
+  Centrality_con <- CINNA::calculate_centralities(networkgraphCon)
+  Centrality_con$`subgraph centrality scores`
+  Centrality_con <- eigen_centrality(networkgraphCon, weights=networkdataCon$weight)
+  Centrality_con$vector
+}
+componentNum <- components(networkgraphCov)
+if(componentNum$no==1){
+  Centrality_cov <- CINNA::calculate_centralities(networkgraphCov)
+  Centrality_cov$`subgraph centrality scores`
+  Centrality_cov <- eigen_centrality(networkgraphCov, weights=networkdataCov$weight)
+  Centrality_cov$vector
+}
