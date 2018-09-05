@@ -33,15 +33,18 @@ taxaBySample <- count(GISBioData,UniqueID)
 colnames(taxaBySample) <- c("UniqueID","nTaxa")
 GISBioData <- join(GISBioData,taxaBySample,by=c("UniqueID"))
 
+#Randomize the the location of taxa present by watershed to see if trends in endemism are non-random
+#GISBioDataRand <- GISBioData %>% group_by(Year) %>% mutate(FinalID=sample(FinalID))
+GISBioDataRand <- GISBioData %>% mutate(Watershed=sample(Watershed))
+
+selected <- GISBioDataRand
+
 LUquantile <- quantile(GISBioData$LU_2000_5K,probs=seq(0,1,0.1))#To get land use quantiles.
-for(i in 1:length(LUquantile)){
-  print(paste(i,LUquantile[i]))
-}
 
 #Find genera unique to a particular watershed for each year. 
 endemism <-  data.frame()
-for(year in unique(GISBioData$Year)){
-  annualSubset <- subset(GISBioData, Year==year)
+for(year in unique(selected$Year)){
+  annualSubset <- subset(selected, Year==year)
   for(watershed in unique(annualSubset$Watershed)){
     for(i in 1:length(LUquantile)){
       if(i>1){
