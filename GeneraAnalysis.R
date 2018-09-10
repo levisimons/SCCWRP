@@ -81,9 +81,13 @@ testAdonis <- adonis(distance(test,method="jaccard") ~ Watershed+altitude+LU_200
 testAdonis
 
 #Determine land use deciles for the full state data set.
-LUquantile <- quantile(GISBioData$LU_2000_5K,probs=seq(0,1,0.1))
+LUdf <- GISBioData[,c("UniqueID","LU_2000_5K")]
+LUdf <- LUdf[!duplicated(LUdf),]
+LUquantile <- quantile(LUdf$LU_2000_5K,probs=seq(0,1,0.1))
 #Determine altitude deciles for the full state data set.
-Altitudequantile <- quantile(GISBioData$altitude,probs=seq(0,1,0.1))
+Altitudedf <- GISBioData[,c("UniqueID","altitude")]
+Altitudedf <- Altitudedf[!duplicated(Altitudedf),]
+Altitudequantile <- quantile(Altitudedf$altitude,probs=seq(0,1,0.1))
 #Compute trends in beta diversity groups of samples set by
 #altitude, year, and land use.
 GeneraTrends <- data.frame()
