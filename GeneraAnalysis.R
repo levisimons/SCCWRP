@@ -77,5 +77,42 @@ set.seed(1)
 test <- subset_samples(physeq)
 test <- transform_sample_counts(test, function(x) x/sum(x))
 testDF <- as(sample_data(test), "data.frame")
-testAdonis <- adonis(distance(test,method="bray") ~ Watershed+altitude+LU_2000_5K, data=testDF, permutations=1000, strata=testDF$Year)
+testAdonis <- adonis(distance(test,method="jaccard") ~ Watershed+altitude+LU_2000_5K, data=testDF, permutations=1000, strata=testDF$Year)
 testAdonis
+
+#Determine land use deciles for the full state data set.
+LUquantile <- quantile(GISBioData$LU_2000_5K,probs=seq(0,1,0.1))
+#Determine altitude deciles for the full state data set.
+Altitudequantile <- quantile(GISBioData$altitude,probs=seq(0,1,0.1))
+#Compute trends in beta diversity groups of samples set by
+#altitude, year, and land use.
+GeneraTrends <- data.frame()
+for(year in unique(GISBioData$Year)){
+  annualSubset <- subset(GISBioData,Year==year)
+  for(i in 1:length(LUquantile)){
+    if(i>1){
+      LULow <- LUquantile[i-1]
+      LUHigh <- LUquantile[i]
+      MidLU <- 0.5*(LULow+LUHigh)
+      for(j in 1:length(Altitudequantile)){
+        if(j>1){
+          AltitudeLow <- Altitudequantile[j-1]
+          AltitudeHigh <- Altitudequantile[j]
+          MidAltitude <- 0.5*(AltitudeLow+AltitudeHigh)
+          sampleDF <- subset(GISBioData,Year==year & LU_2000_5K >= LULow & LU_2000_5K <= LUHigh & altitude >= AltitudeLow & altitude <= AltitudeHigh)
+          if(length(unique(sampleDF$UniqueID))>2){
+            physeqLUYear <- subset_samples(physeq,Year==year & LU_2000_5K >= LULow & LU_2000_5K <= LUHigh & altitude >= AltitudeLow & altitude <= AltitudeHigh)
+            if(nrow(otu_table(physeqLUYear)) > 2){
+              sampleBeta <- distance(physeqLUYear,method="jaccard")
+              print(paste(year,MidLU,MidAltitude,length(unique(sampleDF$UniqueID)),mean(sampleBeta),sd(sampleBeta)))
+              row <- t(as.data.frame(c(year,MidLU,MidAltitude,length(unique(sampleDF$UniqueID)),mean(sampleBeta),sd(sampleBeta))))
+              GeneraTrends <- rbind(row,GeneraTrends)
+            }
+          }
+        }
+      }
+    }
+  }
+}
+colnames(GeneraTrends) <- c("Year","MidLU","MidAltitude","NSamples","MeanBeta","SDBeta")
+rownames(GeneraTrends) <- 1:nrow(GeneraTrends)
