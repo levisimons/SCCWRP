@@ -75,23 +75,23 @@ env.SCCWRP$altitude <- as.numeric(env.SCCWRP$altitude)
 #Zeta diversity with respect to environmental variables.
 zetaTest <- Zeta.msgdm(data.spec=data.SCCWRP,data.env=env.SCCWRP,xy=NULL,sam=nrow(env.SCCWRP),order=2,rescale=FALSE)
 
-#Divide sample metadata into deciles
+#Divide sample metadata into quantiles
 Rowquantile <- quantile(1:nrow(SCCWRP),probs=seq(0,1,0.1))
 #Determine land use deciles for the full state data set.
 LUdf <- GISBioData[,c("UniqueID","LU_2000_5K")]
 LUdf <- LUdf[!duplicated(LUdf),]
 LUdf <- arrange(LUdf,LU_2000_5K)
-LUquantile <- quantile(LUdf$LU_2000_5K,probs=seq(0,1,0.1))
+#LUquantile <- quantile(LUdf$LU_2000_5K,probs=seq(0,1,0.1))
 #Determine altitude deciles for the full state data set.
 Altitudedf <- SCCWRP[,c("UniqueID","altitude")]
 Altitudedf <- Altitudedf[!duplicated(Altitudedf),]
 Altitudedf <- arrange(Altitudedf,altitude)
-Altitudequantile <- quantile(Altitudedf$altitude,probs=seq(0,1,0.1))
+#Altitudequantile <- quantile(Altitudedf$altitude,probs=seq(0,1,0.1))
 
-#Determine zeta diversity for particular subsets of sample data by land use deciles.
+#Determine zeta diversity for particular subsets of sample data by land use quantiles.
 zetaAnalysis <- data.frame()
 NSamples <- 1000
-for(i in 1:length(LUquantile)){
+for(i in 1:length(Rowquantile)){
   if(i>1){
     LUSubset <- LUdf[Rowquantile[i-1]:Rowquantile[i],]
     MidLU <- mean(LUSubset$LU_2000_5K)
@@ -113,7 +113,7 @@ for(i in 1:length(LUquantile)){
 }
 colnames(zetaAnalysis) <- c("zetaExpIntercept","zetaExpExponent","zetaExpAIC","zetaPLIntercept","zetaPLExponent","zetaPLAIC","MidLU")
 
-#Determine zeta diversity for particular subsets of sample data by altitude deciles.
+#Determine zeta diversity for particular subsets of sample data by altitude quantiles.
 zetaAnalysis <- data.frame()
 NSamples <- 1000
 for(i in 1:length(LUquantile)){
