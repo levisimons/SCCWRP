@@ -67,29 +67,52 @@ colnames(data.SCCWRP) <- uniqueTaxa$FinalID
 env.SCCWRP <- join(GISBioData,SCCWRP,by=c("UniqueID"))
 env.SCCWRP <- env.SCCWRP[,c("UniqueID","Watershed","LU_2000_5K","altitude","Year")]
 env.SCCWRP <- env.SCCWRP[!duplicated(env.SCCWRP[c("UniqueID")]),]
-env.SCCWRP <- env.SCCWRP[,c("Watershed","LU_2000_5K","altitude","Year")]
+#env.SCCWRP <- env.SCCWRP[,c("Watershed","LU_2000_5K","altitude","Year")]
+env.SCCWRP <- env.SCCWRP[,c("LU_2000_5K","altitude")]
 env.SCCWRP$LU_2000_5K <- as.numeric(env.SCCWRP$LU_2000_5K)
-env.SCCWRP$Watershed <- as.factor(env.SCCWRP$Watershed)
-env.SCCWRP$Year <- as.factor(env.SCCWRP$Year)
+#env.SCCWRP$Watershed <- as.factor(env.SCCWRP$Watershed)
+#env.SCCWRP$Year <- as.factor(env.SCCWRP$Year)
 env.SCCWRP$altitude <- as.numeric(env.SCCWRP$altitude)
-#Zeta diversity with respect to environmental variables.
-zetaTest <- Zeta.msgdm(data.spec=data.SCCWRP,data.env=env.SCCWRP,xy=NULL,sam=nrow(env.SCCWRP),order=2,rescale=FALSE)
 
-#Divide sample metadata into quantiles
-Rowquantile <- quantile(1:nrow(SCCWRP),probs=seq(0,1,0.1))
+#Zeta diversity with respect to environmental variables.
+zetaTest <- Zeta.msgdm(data.spec=data.SCCWRP,data.env=env.SCCWRP,xy=NULL,reg.type="glm",order.ispline = 2,sam=nrow(env.SCCWRP),order=2,rescale=FALSE)
+zetaTest
+
+#Subset location data.
+xy.SCCWRP <- SCCWRP[,c("Latitude","Longitude","UniqueID")]
+xy.SCCWRP <- xy.SCCWRP[!duplicated(xy.SCCWRP[c("UniqueID")]),]
+xy.SCCWRP <- xy.SCCWRP[,c("Latitude","Longitude")]
+
+#Plotting zeta diversity decay with distance.
+zetaDist <- Zeta.ddecays(xy.SCCWRP,data.SCCWRP,orders=2:10,normalize="Jaccard",sam=nrow(data.SCCWRP),distance.type="ortho",plot=TRUE)
+zetaDist
+
+#Computes the expectation of zeta diversity, the number of species shared by multiple assemblages,
+#for a specific order (number of assemblages or sites) using a formula based on the occupancy of the species.
+Zeta.order.ex(data.SCCWRP, order = 4, sd.correct = TRUE, rescale = FALSE,empty.row = "empty")
+
+#Zeta diversity for the entire state
+zetaState <- Zeta.decline.ex(data.SCCWRP,orders=1:10)
+
 #Determine land use deciles for the full state data set.
-LUdf <- GISBioData[,c("UniqueID","LU_2000_5K")]
+LUdf <- SCCWRP[,c("UniqueID","LU","altitude")]
+colnames(LUdf) <- c("UniqueID","LU_2000_5K","altitude")
+LUdf <- subset(LUdf,altitude <= median(LUdf$altitude))
 LUdf <- LUdf[!duplicated(LUdf),]
 LUdf <- arrange(LUdf,LU_2000_5K)
 #LUquantile <- quantile(LUdf$LU_2000_5K,probs=seq(0,1,0.1))
 #Determine altitude deciles for the full state data set.
-Altitudedf <- SCCWRP[,c("UniqueID","altitude")]
+Altitudedf <- SCCWRP[,c("UniqueID","LU","altitude")]
+colnames(Altitudedf) <- c("UniqueID","LU_2000_5K","altitude")
 Altitudedf <- Altitudedf[!duplicated(Altitudedf),]
+Altitudedf <- subset(Altitudedf,LU_2000_5K <= median(Altitudedf$LU_2000_5K))
 Altitudedf <- arrange(Altitudedf,altitude)
 #Altitudequantile <- quantile(Altitudedf$altitude,probs=seq(0,1,0.1))
 
 #Determine zeta diversity for particular subsets of sample data by land use quantiles.
 zetaAnalysis <- data.frame()
+#Divide sample metadata into quantiles
+Rowquantile <- quantile(1:nrow(LUdf),probs=seq(0,1,0.1))
 NSamples <- 1000
 for(i in 1:length(Rowquantile)){
   if(i>1){
@@ -115,6 +138,8 @@ colnames(zetaAnalysis) <- c("zetaExpIntercept","zetaExpExponent","zetaExpAIC","z
 
 #Determine zeta diversity for particular subsets of sample data by altitude quantiles.
 zetaAnalysis <- data.frame()
+#Divide sample metadata into quantiles
+Rowquantile <- quantile(1:nrow(Altitudedf),probs=seq(0,1,0.1))
 NSamples <- 1000
 for(i in 1:length(LUquantile)){
   if(i>1){
