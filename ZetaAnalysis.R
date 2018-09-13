@@ -20,6 +20,8 @@ GISBioData <- subset(GISBioData, MeasurementType == "benthic macroinvertebrate r
 GISBioData <- GISBioData[!duplicated(GISBioData[,c("UniqueID","FinalID","Count")]),]
 #Read in sample metadata.
 SCCWRP <- read.table("CSCI.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+#Merge in altitude.
+GISBioData <- join(GISBioData,SCCWRP[,c("UniqueID","altitude")],by=c("UniqueID"))
 #Add the number of genera per sample
 taxaBySample <- count(GISBioData,UniqueID)
 colnames(taxaBySample) <- c("UniqueID","nTaxa")
@@ -28,6 +30,64 @@ GISBioData <- join(GISBioData,taxaBySample,by=c("UniqueID"))
 WSBySample <- as.data.frame(table(SCCWRP$Watershed))
 colnames(WSBySample) <- c("Watershed","NSamples")
 GISBioData <- join(GISBioData,WSBySample,by=c("Watershed"))
+#Read in watershed metadata
+Watersheds <- read.table("CAWatersheds.tsv", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+Watersheds$Watershed <- gsub('\\s+', '', Watersheds$Watershed)
+#Merge in watershed area
+GISBioData <- join(GISBioData,Watersheds[,c("Watershed","CatalogingUnitAreaSqMi")],by=c("Watershed"))
+
+#Find watersheds with a larger enough set of samples for downstream analysis.
+sampleMin <- 100
+GISBioDataLWS <- subset(GISBioData,NSamples>=sampleMin)
+set.seed(1)
+zetaAnalysis <- data.frame()
+for(WS in unique(GISBioDataLWS$Watershed)){
+  GISBioDataLocal <- subset(GISBioDataLWS,Watershed==WS) #Subsample by watershed.
+  GISBioDataLocal <- GISBioDataLocal[GISBioDataLocal$UniqueID %in% sample(unique(GISBioDataLocal$UniqueID),sampleMin),] #Subsample to a uniform sample number.
+  metadata <- GISBioDataLocal[,c("UniqueID","LU_2000_5K","altitude")]
+  metadata <- metadata[!duplicated(metadata),] #Get unique environmental parameters per watershed set of samples.
+  selected <- GISBioDataLocal
+  #Get all unique taxa in statewide data set.
+  uniqueTaxa <- as.data.frame(unique(selected$FinalID))
+  colnames(uniqueTaxa) <- c("FinalID")
+  uniqueTaxa <- arrange(uniqueTaxa,FinalID)
+  #Create presence/absence matrix of taxa in samples.
+  #Rows for sample ID and columns 
+  PresenceAbsence <- uniqueTaxa
+  for(ID in unique(selected$UniqueID)){
+    sampleDF <- subset(GISBioData,UniqueID == ID)
+    sampleDF <- sampleDF[,c("FinalID","Count")]
+    tmp <- merge(sampleDF,uniqueTaxa,by=c("FinalID"),all=TRUE)
+    colnames(tmp) <- c("FinalID",ID)
+    PresenceAbsence <- cbind(PresenceAbsence,tmp[,c(2)])
+    colnames(PresenceAbsence)[ncol(PresenceAbsence)] <- ID
+  }
+  #Generate a presence/absence dataframe for zeta diversity analysis of taxa.
+  #Rows for samples, columns for taxa IDs.
+  PresenceAbsence[is.na(PresenceAbsence)] <- 0
+  PresenceAbsence[PresenceAbsence > 0] <- 1
+  data.SCCWRP <- as.data.frame(t(PresenceAbsence[,-c(1)]))
+  colnames(data.SCCWRP) <- uniqueTaxa$FinalID
+  #Calculate zeta diversity decay within each watershed set of samples.
+  zetaDecay <- Zeta.decline.ex(data.SCCWRP,orders=1:10)
+  ExpIntercept <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
+  ExpExp <- zetaDecay$zeta.exp$coefficients[2] #Zeta diversity exponential decay exponent.
+  ExpAIC <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
+  PLIntercept <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
+  PLExp <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
+  PLAIC <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
+  row <- t(as.data.frame(c(WS,mean(metadata$LU_2000_5K),sd(metadata$LU_2000_5K),mean(metadata$altitude),sd(metadata$altitude),ExpIntercept,ExpExp,ExpAIC,PLIntercept,PLExp,PLAIC)))
+  zetaAnalysis <- rbind(zetaAnalysis,row)
+}
+colnames(zetaAnalysis) <- c("Watershed","MeanLU","SDLU","MeanAltitude","SDAltitude","ExpIntercept","ExpExp","ExpAIC","PLIntercept","PLExp","PLAIC")
+zetaAnalysis[,1:11] <- sapply(zetaAnalysis[,1:11],as.character)
+zetaAnalysis[,2:11] <- sapply(zetaAnalysis[,2:11],as.numeric)
+rownames(zetaAnalysis) <- 1:nrow(zetaAnalysis)
+
+
+
+
+
 
 #Determine land use deciles for the full state data set.
 LUdf <- GISBioData[,c("UniqueID","LU_2000_5K")]
@@ -67,21 +127,24 @@ colnames(data.SCCWRP) <- uniqueTaxa$FinalID
 env.SCCWRP <- join(GISBioData,SCCWRP,by=c("UniqueID"))
 env.SCCWRP <- env.SCCWRP[,c("UniqueID","Watershed","LU_2000_5K","altitude","Year")]
 env.SCCWRP <- env.SCCWRP[!duplicated(env.SCCWRP[c("UniqueID")]),]
-#env.SCCWRP <- env.SCCWRP[,c("Watershed","LU_2000_5K","altitude","Year")]
-env.SCCWRP <- env.SCCWRP[,c("LU_2000_5K","altitude")]
+env.SCCWRP <- env.SCCWRP[,c("Watershed","LU_2000_5K","altitude","Year")]
+env.SCCWRP <- env.SCCWRP[,c("Watershed","LU_2000_5K","altitude")]
 env.SCCWRP$LU_2000_5K <- as.numeric(env.SCCWRP$LU_2000_5K)
-#env.SCCWRP$Watershed <- as.factor(env.SCCWRP$Watershed)
+env.SCCWRP$Watershed <- as.factor(env.SCCWRP$Watershed)
 #env.SCCWRP$Year <- as.factor(env.SCCWRP$Year)
 env.SCCWRP$altitude <- as.numeric(env.SCCWRP$altitude)
-
-#Zeta diversity with respect to environmental variables.
-zetaTest <- Zeta.msgdm(data.spec=data.SCCWRP,data.env=env.SCCWRP,xy=NULL,reg.type="glm",order.ispline = 2,sam=nrow(env.SCCWRP),order=2,rescale=FALSE)
-zetaTest
 
 #Subset location data.
 xy.SCCWRP <- SCCWRP[,c("Latitude","Longitude","UniqueID")]
 xy.SCCWRP <- xy.SCCWRP[!duplicated(xy.SCCWRP[c("UniqueID")]),]
 xy.SCCWRP <- xy.SCCWRP[,c("Latitude","Longitude")]
+
+#Zeta diversity with respect to environmental variables.
+zetaTest <- Zeta.msgdm(data.spec=data.SCCWRP,data.env=env.SCCWRP,xy=xy.SCCWRP,reg.type="glm",sam=nrow(env.SCCWRP),order=2,rescale=FALSE)
+#Zeta.varpart returns a data frame with one column containing the variation explained by each component
+#a (the variation explained by distance alone), b (the variation explained by either distance or the environment),
+#c (the variation explained by the environment alone) and d (the unexplained variation).
+zetaVar <- Zeta.varpart(zetaTest)
 
 #Plotting zeta diversity decay with distance.
 zetaDist <- Zeta.ddecays(xy.SCCWRP,data.SCCWRP,orders=2:10,normalize="Jaccard",sam=nrow(data.SCCWRP),distance.type="ortho",plot=TRUE)
@@ -161,4 +224,3 @@ for(i in 1:length(LUquantile)){
     print(paste(MidAltitude,length(unique(AltitudeSubset$UniqueID))))
   }
 }
-colnames(zetaAnalysis) <- c("zetaExpIntercept","zetaExpExponent","zetaExpAIC","zetaPLIntercept","zetaPLExponent","zetaPLAIC","MidAltitude")
