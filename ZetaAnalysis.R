@@ -37,14 +37,14 @@ Watersheds$Watershed <- gsub('\\s+', '', Watersheds$Watershed)
 GISBioData <- join(GISBioData,Watersheds[,c("Watershed","CatalogingUnitAreaSqMi")],by=c("Watershed"))
 
 #Find watersheds with a larger enough set of samples for downstream analysis.
-sampleMin <- 100
+sampleMin <- 25
 GISBioDataLWS <- subset(GISBioData,NSamples>=sampleMin)
 set.seed(1)
 zetaAnalysis <- data.frame()
 for(WS in unique(GISBioDataLWS$Watershed)){
   GISBioDataLocal <- subset(GISBioDataLWS,Watershed==WS) #Subsample by watershed.
   GISBioDataLocal <- GISBioDataLocal[GISBioDataLocal$UniqueID %in% sample(unique(GISBioDataLocal$UniqueID),sampleMin),] #Subsample to a uniform sample number.
-  metadata <- GISBioDataLocal[,c("UniqueID","LU_2000_5K","altitude")]
+  metadata <- GISBioDataLocal[,c("UniqueID","LU_2000_5K","altitude","CSCI")]
   metadata <- metadata[!duplicated(metadata),] #Get unique environmental parameters per watershed set of samples.
   selected <- GISBioDataLocal
   #Get all unique taxa in statewide data set.
@@ -76,18 +76,21 @@ for(WS in unique(GISBioDataLWS$Watershed)){
   PLIntercept <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
   PLExp <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
   PLAIC <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
-  row <- t(as.data.frame(c(WS,mean(metadata$LU_2000_5K),sd(metadata$LU_2000_5K),mean(metadata$altitude),sd(metadata$altitude),ExpIntercept,ExpExp,ExpAIC,PLIntercept,PLExp,PLAIC)))
+  row <- t(as.data.frame(c(WS,mean(metadata$CSCI),mean(metadata$LU_2000_5K),sd(metadata$LU_2000_5K),mean(metadata$altitude),sd(metadata$altitude),ExpIntercept,ExpExp,ExpAIC,PLIntercept,PLExp,PLAIC)))
   zetaAnalysis <- rbind(zetaAnalysis,row)
 }
-colnames(zetaAnalysis) <- c("Watershed","MeanLU","SDLU","MeanAltitude","SDAltitude","ExpIntercept","ExpExp","ExpAIC","PLIntercept","PLExp","PLAIC")
-zetaAnalysis[,1:11] <- sapply(zetaAnalysis[,1:11],as.character)
-zetaAnalysis[,2:11] <- sapply(zetaAnalysis[,2:11],as.numeric)
+colnames(zetaAnalysis) <- c("Watershed","MeanCSCI","MeanLU","SDLU","MeanAltitude","SDAltitude","ExpIntercept","ExpExp","ExpAIC","PLIntercept","PLExp","PLAIC")
+zetaAnalysis[,1:12] <- sapply(zetaAnalysis[,1:12],as.character)
+zetaAnalysis[,2:12] <- sapply(zetaAnalysis[,2:12],as.numeric)
 rownames(zetaAnalysis) <- 1:nrow(zetaAnalysis)
+WSAreas <- GISBioDataLWS[,c("Watershed","CatalogingUnitAreaSqMi")]
+WSAreas <- WSAreas[!duplicated(WSAreas),]
+zetaAnalysis <- join(zetaAnalysis,WSAreas,by=c("Watershed"))
 
 
 
 
-
+#Scrap###############
 
 #Determine land use deciles for the full state data set.
 LUdf <- GISBioData[,c("UniqueID","LU_2000_5K")]
