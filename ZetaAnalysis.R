@@ -10,6 +10,7 @@ library(tidyr)
 library(MASS)
 library(zetadiv)
 library(magrittr)
+library(relaimpo)
 
 setwd("~/Desktop/SCCWRP")
 #Read in site data containing biological counts, water chemistry, and land usage values.
@@ -39,45 +40,50 @@ GISBioData <- join(GISBioData,Watersheds[,c("Watershed","CatalogingUnitAreaSqMi"
 #Find watersheds with a larger enough set of samples for downstream analysis.
 sampleMin <- 25
 GISBioDataLWS <- subset(GISBioData,NSamples>=sampleMin)
-set.seed(1)
 zetaAnalysis <- data.frame()
-for(WS in unique(GISBioDataLWS$Watershed)){
-  GISBioDataLocal <- subset(GISBioDataLWS,Watershed==WS) #Subsample by watershed.
-  GISBioDataLocal <- GISBioDataLocal[GISBioDataLocal$UniqueID %in% sample(unique(GISBioDataLocal$UniqueID),sampleMin),] #Subsample to a uniform sample number.
-  metadata <- GISBioDataLocal[,c("UniqueID","LU_2000_5K","altitude","CSCI")]
-  metadata <- metadata[!duplicated(metadata),] #Get unique environmental parameters per watershed set of samples.
-  selected <- GISBioDataLocal
-  #Get all unique taxa in statewide data set.
-  uniqueTaxa <- as.data.frame(unique(selected$FinalID))
-  colnames(uniqueTaxa) <- c("FinalID")
-  uniqueTaxa <- arrange(uniqueTaxa,FinalID)
-  #Create presence/absence matrix of taxa in samples.
-  #Rows for sample ID and columns 
-  PresenceAbsence <- uniqueTaxa
-  for(ID in unique(selected$UniqueID)){
-    sampleDF <- subset(GISBioData,UniqueID == ID)
-    sampleDF <- sampleDF[,c("FinalID","Count")]
-    tmp <- merge(sampleDF,uniqueTaxa,by=c("FinalID"),all=TRUE)
-    colnames(tmp) <- c("FinalID",ID)
-    PresenceAbsence <- cbind(PresenceAbsence,tmp[,c(2)])
-    colnames(PresenceAbsence)[ncol(PresenceAbsence)] <- ID
+#Determine zeta diversity per subsample group per watershed.  Run repeated subsampling
+#to help with determinining significance of correlations between environmental factors
+#and zeta diversity decay parameters.
+for(j in 1:100){
+  for(WS in unique(GISBioDataLWS$Watershed)){
+    GISBioDataLocal <- subset(GISBioDataLWS,Watershed==WS) #Subsample by watershed.
+    GISBioDataLocal <- GISBioDataLocal[GISBioDataLocal$UniqueID %in% sample(unique(GISBioDataLocal$UniqueID),sampleMin),] #Subsample to a uniform sample number.
+    metadata <- GISBioDataLocal[,c("UniqueID","LU_2000_5K","altitude","CSCI")]
+    metadata <- metadata[!duplicated(metadata),] #Get unique environmental parameters per watershed set of samples.
+    selected <- GISBioDataLocal
+    #Get all unique taxa in statewide data set.
+    uniqueTaxa <- as.data.frame(unique(selected$FinalID))
+    colnames(uniqueTaxa) <- c("FinalID")
+    uniqueTaxa <- arrange(uniqueTaxa,FinalID)
+    #Create presence/absence matrix of taxa in samples.
+    #Rows for sample ID and columns 
+    PresenceAbsence <- uniqueTaxa
+    for(ID in unique(selected$UniqueID)){
+      sampleDF <- subset(GISBioData,UniqueID == ID)
+      sampleDF <- sampleDF[,c("FinalID","Count")]
+      tmp <- merge(sampleDF,uniqueTaxa,by=c("FinalID"),all=TRUE)
+      colnames(tmp) <- c("FinalID",ID)
+      PresenceAbsence <- cbind(PresenceAbsence,tmp[,c(2)])
+      colnames(PresenceAbsence)[ncol(PresenceAbsence)] <- ID
+    }
+    #Generate a presence/absence dataframe for zeta diversity analysis of taxa.
+    #Rows for samples, columns for taxa IDs.
+    PresenceAbsence[is.na(PresenceAbsence)] <- 0
+    PresenceAbsence[PresenceAbsence > 0] <- 1
+    data.SCCWRP <- as.data.frame(t(PresenceAbsence[,-c(1)]))
+    colnames(data.SCCWRP) <- uniqueTaxa$FinalID
+    #Calculate zeta diversity decay within each watershed set of samples.
+    zetaDecay <- Zeta.decline.ex(data.SCCWRP,orders=1:10,plot=FALSE)
+    ExpIntercept <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
+    ExpExp <- zetaDecay$zeta.exp$coefficients[2] #Zeta diversity exponential decay exponent.
+    ExpAIC <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
+    PLIntercept <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
+    PLExp <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
+    PLAIC <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
+    row <- t(as.data.frame(c(WS,mean(metadata$CSCI),mean(metadata$LU_2000_5K),sd(metadata$LU_2000_5K),mean(metadata$altitude),sd(metadata$altitude),ExpIntercept,ExpExp,ExpAIC,PLIntercept,PLExp,PLAIC)))
+    zetaAnalysis <- rbind(zetaAnalysis,row)
+    print(paste(j,row))
   }
-  #Generate a presence/absence dataframe for zeta diversity analysis of taxa.
-  #Rows for samples, columns for taxa IDs.
-  PresenceAbsence[is.na(PresenceAbsence)] <- 0
-  PresenceAbsence[PresenceAbsence > 0] <- 1
-  data.SCCWRP <- as.data.frame(t(PresenceAbsence[,-c(1)]))
-  colnames(data.SCCWRP) <- uniqueTaxa$FinalID
-  #Calculate zeta diversity decay within each watershed set of samples.
-  zetaDecay <- Zeta.decline.ex(data.SCCWRP,orders=1:10)
-  ExpIntercept <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
-  ExpExp <- zetaDecay$zeta.exp$coefficients[2] #Zeta diversity exponential decay exponent.
-  ExpAIC <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
-  PLIntercept <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
-  PLExp <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
-  PLAIC <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
-  row <- t(as.data.frame(c(WS,mean(metadata$CSCI),mean(metadata$LU_2000_5K),sd(metadata$LU_2000_5K),mean(metadata$altitude),sd(metadata$altitude),ExpIntercept,ExpExp,ExpAIC,PLIntercept,PLExp,PLAIC)))
-  zetaAnalysis <- rbind(zetaAnalysis,row)
 }
 colnames(zetaAnalysis) <- c("Watershed","MeanCSCI","MeanLU","SDLU","MeanAltitude","SDAltitude","ExpIntercept","ExpExp","ExpAIC","PLIntercept","PLExp","PLAIC")
 zetaAnalysis[,1:12] <- sapply(zetaAnalysis[,1:12],as.character)
@@ -86,8 +92,12 @@ rownames(zetaAnalysis) <- 1:nrow(zetaAnalysis)
 WSAreas <- GISBioDataLWS[,c("Watershed","CatalogingUnitAreaSqMi")]
 WSAreas <- WSAreas[!duplicated(WSAreas),]
 zetaAnalysis <- join(zetaAnalysis,WSAreas,by=c("Watershed"))
+write.table(zetaAnalysis,"zetaAnalysis100Permutations",quote=FALSE,sep="\t",row.names = FALSE)
 
-
+#Determine a generalized linear model for the zeta diversity decay parameter versus
+#environmental parameters, as well as their relative importance.
+zetaModel <- glm(PLExp ~ SDLU+SDAltitude, data=zetaAnalysis)
+calc.relimp(zetaModel,type="lmg",rela=TRUE)
 
 
 #Scrap###############
