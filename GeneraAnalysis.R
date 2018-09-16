@@ -63,22 +63,26 @@ rownames(taxmat) <- as.data.frame(taxmat)$FinalID
 TAX = tax_table(taxmat)
 samplemat <- GISBioData[,c("UniqueID","Watershed","LU_2000_5K","Year","altitude")]
 samplemat <- samplemat[!duplicated(samplemat),]
-#samplemat$Watershed <- as.factor(samplemat$Watershed)
+samplemat$Watershed <- as.factor(samplemat$Watershed)
 samplemat$LU_2000_5K <- as.numeric(as.character(samplemat$LU_2000_5K))
-samplemat$Year <- as.numeric(as.character(samplemat$Year))
+samplemat$Year <- as.factor(samplemat$Year)
 samplemat$altitude <- as.numeric(as.character(samplemat$altitude))
 row.names(samplemat) <- samplemat$UniqueID
 sampledata <- sample_data(samplemat)
 physeq <- phyloseq(OTU,TAX,sampledata)
 
-#What factors are driving variations in beta diversity?
+#What factors are driving variations in alpha and beta diversity?
 #Samples are comprised of the relative abundances of taxa by genera.
 set.seed(1)
 test <- subset_samples(physeq)
 test <- transform_sample_counts(test, function(x) x/sum(x))
 testDF <- as(sample_data(test), "data.frame")
-testAdonis <- adonis(distance(test,method="jaccard") ~ Watershed+altitude+LU_2000_5K, data=testDF, permutations=1000, strata=testDF$Year)
-testAdonis
+alphaDF <- GISBioData[,c("UniqueID","Watershed","altitude","LU_2000_5K","Year","nTaxa")]
+alphaDF <- alphaDF[!duplicated(alphaDF),]
+alphaDF$Watershed <- as.factor(alphaDF$Watershed)
+summary(aov(nTaxa~Watershed+altitude+LU_2000_5K+Year,data=alphaDF))
+testBeta <- adonis(distance(test,method="jaccard") ~ Watershed+altitude+LU_2000_5K+Year, data=testDF, permutations=1000)
+testBeta
 
 #Determine land use deciles for the full state data set.
 LUdf <- GISBioData[,c("UniqueID","LU_2000_5K")]
@@ -91,32 +95,29 @@ Altitudequantile <- quantile(Altitudedf$altitude,probs=seq(0,1,0.1))
 #Compute trends in beta diversity groups of samples set by
 #altitude, year, and land use.
 GeneraTrends <- data.frame()
-for(year in unique(GISBioData$Year)){
-  annualSubset <- subset(GISBioData,Year==year)
-  for(i in 1:length(LUquantile)){
-    if(i>1){
-      LULow <- LUquantile[i-1]
-      LUHigh <- LUquantile[i]
-      MidLU <- 0.5*(LULow+LUHigh)
-      for(j in 1:length(Altitudequantile)){
-        if(j>1){
-          AltitudeLow <- Altitudequantile[j-1]
-          AltitudeHigh <- Altitudequantile[j]
-          MidAltitude <- 0.5*(AltitudeLow+AltitudeHigh)
-          sampleDF <- subset(GISBioData,Year==year & LU_2000_5K >= LULow & LU_2000_5K <= LUHigh & altitude >= AltitudeLow & altitude <= AltitudeHigh)
-          if(length(unique(sampleDF$UniqueID))>2){
-            physeqLUYear <- subset_samples(physeq,Year==year & LU_2000_5K >= LULow & LU_2000_5K <= LUHigh & altitude >= AltitudeLow & altitude <= AltitudeHigh)
-            if(nrow(otu_table(physeqLUYear)) > 2){
-              sampleBeta <- distance(physeqLUYear,method="jaccard")
-              print(paste(year,MidLU,MidAltitude,length(unique(sampleDF$UniqueID)),mean(sampleBeta),sd(sampleBeta)))
-              row <- t(as.data.frame(c(year,MidLU,MidAltitude,length(unique(sampleDF$UniqueID)),mean(sampleBeta),sd(sampleBeta))))
-              GeneraTrends <- rbind(row,GeneraTrends)
-            }
+for(i in 1:length(LUquantile)){
+  if(i>1){
+    LULow <- LUquantile[i-1]
+    LUHigh <- LUquantile[i]
+    MidLU <- 0.5*(LULow+LUHigh)
+    for(j in 1:length(Altitudequantile)){
+      if(j>1){
+        AltitudeLow <- Altitudequantile[j-1]
+        AltitudeHigh <- Altitudequantile[j]
+        MidAltitude <- 0.5*(AltitudeLow+AltitudeHigh)
+        sampleDF <- subset(GISBioData,LU_2000_5K >= LULow & LU_2000_5K <= LUHigh & altitude >= AltitudeLow & altitude <= AltitudeHigh)
+        if(length(unique(sampleDF$UniqueID))>2){
+          physeqLUYear <- subset_samples(physeq,LU_2000_5K >= LULow & LU_2000_5K <= LUHigh & altitude >= AltitudeLow & altitude <= AltitudeHigh)
+          if(nrow(otu_table(physeqLUYear)) > 2){
+            sampleBeta <- distance(physeqLUYear,method="bray")
+            print(paste(MidLU,MidAltitude,length(unique(sampleDF$UniqueID)),mean(sampleBeta),sd(sampleBeta)))
+            row <- t(as.data.frame(c(MidLU,MidAltitude,length(unique(sampleDF$UniqueID)),mean(sampleBeta),sd(sampleBeta))))
+            GeneraTrends <- rbind(row,GeneraTrends)
           }
         }
       }
     }
   }
 }
-colnames(GeneraTrends) <- c("Year","MidLU","MidAltitude","NSamples","MeanBeta","SDBeta")
+colnames(GeneraTrends) <- c("MidLU","MidAltitude","NSamples","MeanBeta","SDBeta")
 rownames(GeneraTrends) <- 1:nrow(GeneraTrends)
