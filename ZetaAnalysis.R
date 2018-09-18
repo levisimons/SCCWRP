@@ -175,9 +175,38 @@ colnames(zetaAnalysis) <- c("Watershed","MeanCSCI","MeanLU","SDLU","MeanAltitude
 zetaAnalysis[,1:ncol(zetaAnalysis)] <- sapply(zetaAnalysis[,1:ncol(zetaAnalysis)],as.character)
 zetaAnalysis[,2:ncol(zetaAnalysis)] <- sapply(zetaAnalysis[,2:ncol(zetaAnalysis)],as.numeric)
 rownames(zetaAnalysis) <- 1:nrow(zetaAnalysis)
-write.table(zetaAnalysis,"zetaAnalysis100PermutationsHUC2.txt",quote=FALSE,sep="\t",row.names = FALSE)
+#write.table(zetaAnalysis,"zetaAnalysis100PermutationsHUC2.txt",quote=FALSE,sep="\t",row.names = FALSE)
+zetaAnalysis <- read.table("zetaAnalysis100PermutationsHUC8.txt",header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
 
 #Determine a generalized linear model for the zeta diversity decay parameter versus
 #environmental parameters, as well as their relative importance.
-zetaModel <- glm(PLExp ~ SDLU+SDAltitude, data=zetaAnalysis)
+zetaModel1 <- lm(MeanCSCI ~ MeanAlpha+MeanAlphaFFG, data=zetaAnalysis)
+zetaModel2 <- lm(MeanCSCI ~ MeanAlpha+MeanAlphaFFG+Beta+BetaFFG, data=zetaAnalysis)
+zetaModel3 <- lm(MeanCSCI ~ MeanAlpha+MeanAlphaFFG+Beta+BetaFFG+PLExp+PLExpFFG, data=zetaAnalysis)
+zetaModel4 <- lm(MeanCSCI ~ MeanAlpha+MeanAlphaFFG+PLExp+PLExpFFG, data=zetaAnalysis)
+zetaModel5 <- lm(MeanCSCI ~ PLIntercept+PLInterceptFFG+Beta+BetaFFG+PLExp+PLExpFFG, data=zetaAnalysis)
+anova(zetaModel5)
+summary(zetaModel5)
+zetaTest <- anova(zetaModel1,zetaModel2,zetaModel3,zetaModel4)
+
+zetaModel <- lm(MeanCSCI ~ PLIntercept+PLInterceptFFG+Beta+BetaFFG+PLExp+PLExpFFG, data=zetaAnalysis)
+summary(zetaModel)
+zetaModel$coefficients
+anova(zetaModel)
 calc.relimp(zetaModel,type="lmg",rela=TRUE)
+
+#calculate a linear model fit.
+zetaAnalysis$fit1 <- zetaModel$coefficients[1]+zetaAnalysis$PLIntercept*zetaModel$coefficients[2]+zetaAnalysis$PLInterceptFFG*zetaModel$coefficients[3]+zetaAnalysis$Beta*zetaModel$coefficients[4]+zetaAnalysis$BetaFFG*zetaModel$coefficients[5]+zetaAnalysis$PLExp*zetaModel$coefficients[6]+zetaAnalysis$PLExpFFG*zetaModel$coefficients[7]
+
+plot(zetaAnalysis$MeanCSCI,zetaAnalysis$Beta*zetaAnalysis$BetaFFG+zetaAnalysis$MeanAlpha*zetaAnalysis$MeanAlphaFFG+zetaAnalysis$PLExp*zetaAnalysis$PLExpFFG)
+cor.test(zetaAnalysis$MeanCSCI,zetaAnalysis$Beta*zetaAnalysis$BetaFFG+zetaAnalysis$MeanAlpha*zetaAnalysis$MeanAlphaFFG+zetaAnalysis$PLExp*zetaAnalysis$PLExpFFG,method="spearman")
+
+plot(zetaAnalysis$MeanCSCI,zetaAnalysis$fit1)
+cor.test(zetaAnalysis$MeanCSCI,zetaAnalysis$fit1,method="pearson")
+
+#Regression between network parameters.
+library(Hmisc)
+library(corrplot)
+library("PerformanceAnalytics")
+#Each significance level is associated to a symbol : p-values(0, 0.001, 0.01, 0.05, 0.1, 1) <=> symbols(“***”, “**”, “*”, “.”, " “)
+chart.Correlation(zetaAnalysis[,c("MeanCSCI","MeanAltitude","MeanLU","MeanAlpha","MeanAlphaFFG","PLIntercept","PLInterceptFFG","Beta","BetaFFG","PLExp","PLExpFFG","fit1")], histogram=FALSE, method="pearson")
