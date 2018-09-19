@@ -72,8 +72,8 @@ zetaAnalysis <- data.frame()
 #to help with determinining significance of correlations between environmental factors
 #and zeta diversity decay parameters.
 for(j in 1:100){
-  for(WS in unique(GISBioDataLWS$HUC2)){
-    GISBioDataLocal <- subset(GISBioDataLWS,HUC2==WS) #Subsample by watershed.
+  for(WS in unique(GISBioDataLWS$HUC8)){
+    GISBioDataLocal <- subset(GISBioDataLWS,HUC8==WS) #Subsample by watershed.
     GISBioDataLocal <- GISBioDataLocal[GISBioDataLocal$UniqueID %in% sample(unique(GISBioDataLocal$UniqueID),sampleMin),] #Subsample to a uniform sample number.
     GISBioDataLocal <- GISBioDataLocal[!is.na(GISBioDataLocal$FunctionalFeedingGroup),]
     selected <- GISBioDataLocal
@@ -128,17 +128,17 @@ for(j in 1:100){
     colnames(ffg.rand.SCCWRP) <- colnames(ffg.SCCWRP)
     rownames(ffg.rand.SCCWRP) <- rownames(ffg.SCCWRP)
     #Calculate zeta diversity decay for taxa within each watershed set of samples.
-    zetaDecay <- Zeta.decline.ex(data.SCCWRP,orders=1:10,plot=FALSE)
+    zetaDecay <- Zeta.decline.ex(data.SCCWRP,orders=1:10,plot=FALSE,rescale=FALSE)
     ExpIntercept <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
     ExpExp <- zetaDecay$zeta.exp$coefficients[2] #Zeta diversity exponential decay exponent.
     ExpAIC <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
     PLIntercept <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
     PLExp <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
     PLAIC <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
-    zeta_1 <- Zeta.order.ex(data.SCCWRP,order=1,rescale=TRUE) #Zeta order 1 for taxa.
+    zeta_1 <- Zeta.order.ex(data.SCCWRP,order=1,rescale=FALSE) #Zeta order 1 for taxa.
     MeanAlpha <- zeta_1$zeta.val #Mean alpha diversity for taxa.
     SDAlpha <- zeta_1$zeta.val.sd #Standard deviation on alpha diversity for taxa.
-    zeta_2 <- Zeta.order.ex(data.SCCWRP,order=2,rescale=TRUE) #Zeta order 2 for taxa.
+    zeta_2 <- Zeta.order.ex(data.SCCWRP,order=2,rescale=FALSE) #Zeta order 2 for taxa.
     Beta <- zeta_2$zeta.val/(2*zeta_1$zeta.val-zeta_2$zeta.val) #Beta diversity for taxa based on Jaccard dissimilarity.
     #Calculate zeta diversity decay for FFGs within each watershed set of samples.
     zetaDecay <- Zeta.decline.ex(ffg.SCCWRP,orders=1:10,plot=FALSE)
@@ -148,23 +148,23 @@ for(j in 1:100){
     PLInterceptFFG <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
     PLExpFFG <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
     PLAICFFG <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
-    zeta_1 <- Zeta.order.ex(ffg.SCCWRP,order=1,rescale=TRUE) #Zeta order 1 for FFGs.
+    zeta_1 <- Zeta.order.ex(ffg.SCCWRP,order=1,rescale=FALSE) #Zeta order 1 for FFGs.
     MeanAlphaFFG <- zeta_1$zeta.val #Mean alpha diversity for FFGs.
     SDAlphaFFG <- zeta_1$zeta.val.sd #Standard deviation on alpha diversity for FFGs.
-    zeta_2 <- Zeta.order.ex(ffg.SCCWRP,order=2,rescale=TRUE) #Zeta order 2 for FFGs.
+    zeta_2 <- Zeta.order.ex(ffg.SCCWRP,order=2,rescale=FALSE) #Zeta order 2 for FFGs.
     BetaFFG <- zeta_2$zeta.val/(2*zeta_1$zeta.val-zeta_2$zeta.val) #Beta diversity for FFGs based on Jaccard dissimilarity.
     #Calculate zeta diversity decay for randomly reassigned FFGs within each watershed set of samples.
-    zetaDecay <- Zeta.decline.ex(ffg.rand.SCCWRP,orders=1:10,plot=FALSE)
+    zetaDecay <- Zeta.decline.ex(ffg.rand.SCCWRP,orders=1:10,plot=FALSE,rescale=FALSE)
     ExpInterceptFFGRand <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
     ExpExpFFGRand <- zetaDecay$zeta.exp$coefficients[2] #Zeta diversity exponential decay exponent.
     ExpAICFFGRand <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
     PLInterceptFFGRand <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
     PLExpFFGRand <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
     PLAICFFGRand <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
-    zeta_1 <- Zeta.order.ex(ffg.rand.SCCWRP,order=1,rescale=TRUE) #Zeta order 1 for FFGs.
+    zeta_1 <- Zeta.order.ex(ffg.rand.SCCWRP,order=1,rescale=FALSE) #Zeta order 1 for FFGs.
     MeanAlphaFFGRand <- zeta_1$zeta.val #Mean alpha diversity for FFGs.
     SDAlphaFFGRand <- zeta_1$zeta.val.sd #Standard deviation on alpha diversity for FFGs.
-    zeta_2 <- Zeta.order.ex(ffg.rand.SCCWRP,order=2,rescale=TRUE) #Zeta order 2 for FFGs.
+    zeta_2 <- Zeta.order.ex(ffg.rand.SCCWRP,order=2,rescale=FALSE) #Zeta order 2 for FFGs.
     BetaFFGRand <- zeta_2$zeta.val/(2*zeta_1$zeta.val-zeta_2$zeta.val) #Beta diversity for FFGs based on Jaccard dissimilarity.
     row <- t(as.data.frame(c(WS,mean(metadata$CSCI),mean(metadata$LU_2000_5K),sd(metadata$LU_2000_5K),mean(metadata$altitude),sd(metadata$altitude),MeanAlpha,SDAlpha,Beta,ExpIntercept,ExpExp,ExpAIC,PLIntercept,PLExp,PLAIC,MeanAlphaFFG,SDAlphaFFG,BetaFFG,ExpInterceptFFG,ExpExpFFG,ExpAICFFG,PLInterceptFFG,PLExpFFG,PLAICFFG,MeanAlphaFFGRand,SDAlphaFFGRand,BetaFFGRand,ExpInterceptFFGRand,ExpExpFFGRand,ExpAICFFGRand,PLInterceptFFGRand,PLExpFFGRand,PLAICFFGRand)))
     zetaAnalysis <- rbind(zetaAnalysis,row)
@@ -175,31 +175,19 @@ colnames(zetaAnalysis) <- c("Watershed","MeanCSCI","MeanLU","SDLU","MeanAltitude
 zetaAnalysis[,1:ncol(zetaAnalysis)] <- sapply(zetaAnalysis[,1:ncol(zetaAnalysis)],as.character)
 zetaAnalysis[,2:ncol(zetaAnalysis)] <- sapply(zetaAnalysis[,2:ncol(zetaAnalysis)],as.numeric)
 rownames(zetaAnalysis) <- 1:nrow(zetaAnalysis)
-#write.table(zetaAnalysis,"zetaAnalysis100PermutationsHUC2.txt",quote=FALSE,sep="\t",row.names = FALSE)
+#write.table(zetaAnalysis,"zetaAnalysis100PermutationsHUC8v2.txt",quote=FALSE,sep="\t",row.names = FALSE)
 zetaAnalysis <- read.table("zetaAnalysis100PermutationsHUC8.txt",header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
 
-#Determine a generalized linear model for the zeta diversity decay parameter versus
-#environmental parameters, as well as their relative importance.
-zetaModel1 <- lm(MeanCSCI ~ MeanAlpha+MeanAlphaFFG, data=zetaAnalysis)
-zetaModel2 <- lm(MeanCSCI ~ MeanAlpha+MeanAlphaFFG+Beta+BetaFFG, data=zetaAnalysis)
-zetaModel3 <- lm(MeanCSCI ~ MeanAlpha+MeanAlphaFFG+Beta+BetaFFG+PLExp+PLExpFFG, data=zetaAnalysis)
-zetaModel4 <- lm(MeanCSCI ~ MeanAlpha+MeanAlphaFFG+PLExp+PLExpFFG, data=zetaAnalysis)
-zetaModel5 <- lm(MeanCSCI ~ PLIntercept+PLInterceptFFG+Beta+BetaFFG+PLExp+PLExpFFG, data=zetaAnalysis)
-anova(zetaModel5)
-summary(zetaModel5)
-zetaTest <- anova(zetaModel1,zetaModel2,zetaModel3,zetaModel4)
-
-zetaModel <- lm(MeanCSCI ~ PLIntercept+PLInterceptFFG+Beta+BetaFFG+PLExp+PLExpFFG, data=zetaAnalysis)
+#zetaModel <- lm(MeanCSCI ~ MeanAlpha+MeanAlphaFFG+Beta+BetaFFG+PLExp+PLExpFFG, data=zetaAnalysis)
+zetaModel <- lm(MeanCSCI ~ MeanAlpha+MeanAlphaFFG+Beta+BetaFFG+PLExpFFG, data=zetaAnalysis)
 summary(zetaModel)
 zetaModel$coefficients
 anova(zetaModel)
 calc.relimp(zetaModel,type="lmg",rela=TRUE)
 
 #calculate a linear model fit.
-zetaAnalysis$fit1 <- zetaModel$coefficients[1]+zetaAnalysis$PLIntercept*zetaModel$coefficients[2]+zetaAnalysis$PLInterceptFFG*zetaModel$coefficients[3]+zetaAnalysis$Beta*zetaModel$coefficients[4]+zetaAnalysis$BetaFFG*zetaModel$coefficients[5]+zetaAnalysis$PLExp*zetaModel$coefficients[6]+zetaAnalysis$PLExpFFG*zetaModel$coefficients[7]
-
-plot(zetaAnalysis$MeanCSCI,zetaAnalysis$Beta*zetaAnalysis$BetaFFG+zetaAnalysis$MeanAlpha*zetaAnalysis$MeanAlphaFFG+zetaAnalysis$PLExp*zetaAnalysis$PLExpFFG)
-cor.test(zetaAnalysis$MeanCSCI,zetaAnalysis$Beta*zetaAnalysis$BetaFFG+zetaAnalysis$MeanAlpha*zetaAnalysis$MeanAlphaFFG+zetaAnalysis$PLExp*zetaAnalysis$PLExpFFG,method="spearman")
+#zetaAnalysis$fit1 <- zetaModel$coefficients[1]+zetaAnalysis$MeanAlpha*zetaModel$coefficients[2]+zetaAnalysis$MeanAlphaFFG*zetaModel$coefficients[3]+zetaAnalysis$Beta*zetaModel$coefficients[4]+zetaAnalysis$BetaFFG*zetaModel$coefficients[5]+zetaAnalysis$PLExp*zetaModel$coefficients[6]+zetaAnalysis$PLExpFFG*zetaModel$coefficients[7]
+zetaAnalysis$fit1 <- zetaModel$coefficients[1]+zetaAnalysis$MeanAlpha*zetaModel$coefficients[2]+zetaAnalysis$MeanAlphaFFG*zetaModel$coefficients[3]+zetaAnalysis$Beta*zetaModel$coefficients[4]+zetaAnalysis$BetaFFG*zetaModel$coefficients[5]+zetaAnalysis$PLExpFFG*zetaModel$coefficients[6]
 
 plot(zetaAnalysis$MeanCSCI,zetaAnalysis$fit1)
 cor.test(zetaAnalysis$MeanCSCI,zetaAnalysis$fit1,method="pearson")
@@ -209,4 +197,4 @@ library(Hmisc)
 library(corrplot)
 library("PerformanceAnalytics")
 #Each significance level is associated to a symbol : p-values(0, 0.001, 0.01, 0.05, 0.1, 1) <=> symbols(“***”, “**”, “*”, “.”, " “)
-chart.Correlation(zetaAnalysis[,c("MeanCSCI","MeanAltitude","MeanLU","MeanAlpha","MeanAlphaFFG","PLIntercept","PLInterceptFFG","Beta","BetaFFG","PLExp","PLExpFFG","fit1")], histogram=FALSE, method="pearson")
+chart.Correlation(zetaAnalysis[,c("MeanCSCI","MeanAltitude","MeanLU","MeanAlpha","MeanAlphaFFG","SDAlpha","SDAlphaFFG","Beta","BetaFFG","PLExp","PLExpFFG","fit1")], histogram=FALSE, method="pearson")
