@@ -1,6 +1,7 @@
 library("plyr")
 library(dplyr)
 library("ggplot2")
+library(ggpubr)
 library(lubridate)
 library("ape")
 library("vegan")
@@ -11,6 +12,7 @@ library(MASS)
 library(zetadiv)
 library(magrittr)
 library(relaimpo)
+library(geosphere)
 
 setwd("~/Desktop/SCCWRP")
 #Read in site data containing biological counts, water chemistry, and land usage values.
@@ -65,20 +67,37 @@ tmp <- arrange(tmp,UniqueID,FunctionalFeedingGroup)
 GISBioData <- join(GISBioData,tmp,by=c("UniqueID","FunctionalFeedingGroup"))
 
 #Find watersheds with a larger enough set of samples for downstream analysis.
-sampleMin <- 25
+sampleMin <- 25 #Minimum of 25 samples per watershed
+samplingNum <- 10 #Number of samples to select per sampling group within watershed.
 GISBioDataLWS <- subset(GISBioData,NSamples>=sampleMin)
+#Determine the number of samples a particular taxon is present in.
+taxaSamples <- as.data.frame(table(GISBioDataLWS$FinalID))
+colnames(taxaSamples) <- c("FinalID","NumSamples")
+GISBioDataLWS <- join(GISBioDataLWS ,taxaSamples,by=c("FinalID"))
+#Determine the number of watersheds a particular taxon is present in.
+taxaWS <- as.data.frame(count(GISBioDataLWS ,FinalID,HUC8))
+colnames(taxaWS) <- c("FinalID","HUC8","NumWatersheds")
+taxaWS$NumWatersheds[taxaWS$NumWatersheds>0] <- 1
+taxaWS <- as.data.table(table(taxaWS$FinalID))
+colnames(taxaWS) <- c("FinalID","NumWatersheds")
+GISBioDataLWS <- join(GISBioDataLWS,taxaWS,by=c("FinalID"))
+
 zetaAnalysis <- data.frame()
 #Determine zeta diversity per subsample group per watershed.  Run repeated subsampling
 #to help with determinining significance of correlations between environmental factors
 #and zeta diversity decay parameters.
+set.seed(1)
 for(j in 1:100){
   for(WS in unique(GISBioDataLWS$HUC8)){
     GISBioDataLocal <- subset(GISBioDataLWS,HUC8==WS) #Subsample by watershed.
-    GISBioDataLocal <- GISBioDataLocal[GISBioDataLocal$UniqueID %in% sample(unique(GISBioDataLocal$UniqueID),sampleMin),] #Subsample to a uniform sample number.
+    GISBioDataLocal <- GISBioDataLocal[GISBioDataLocal$UniqueID %in% sample(unique(GISBioDataLocal$UniqueID),samplingNum),] #Subsample to a uniform sample number.
     GISBioDataLocal <- GISBioDataLocal[!is.na(GISBioDataLocal$FunctionalFeedingGroup),]
     selected <- GISBioDataLocal
-    metadata <- GISBioDataLocal[,c("UniqueID","LU_2000_5K","altitude","CSCI")]
+    metadata <- GISBioDataLocal[,c("UniqueID","LU_2000_5K","altitude","Longitude","Latitude","CSCI")]
     metadata <- metadata[!duplicated(metadata),] #Get unique environmental parameters per watershed set of samples.
+    #Get geographic distances between samples
+    MeanDist <- mean(distm(metadata[,c('Longitude','Latitude')], metadata[,c('Longitude','Latitude')], fun=distGeo))
+    SDDist <- sd(distm(metadata[,c('Longitude','Latitude')], metadata[,c('Longitude','Latitude')], fun=distGeo))
     #Get all unique taxa in statewide data set.
     uniqueTaxa <- as.data.frame(unique(selected$FinalID))
     colnames(uniqueTaxa) <- c("FinalID")
@@ -116,6 +135,11 @@ for(j in 1:100){
     PresenceAbsence[PresenceAbsence > 0] <- 1
     data.SCCWRP <- as.data.frame(t(PresenceAbsence[,-c(1)]))
     colnames(data.SCCWRP) <- uniqueTaxa$FinalID
+    #Generate a presence/absence dataframe for zeta diversity analysis of randomly assigned genera.
+    #Rows for samples, columns for genera IDs.
+    data.rand.SCCWRP <- as.data.frame(matrix(sample(unlist(data.SCCWRP),ncol(data.SCCWRP)*nrow(data.SCCWRP)),nrow=nrow(data.SCCWRP), byrow=T))
+    colnames(data.rand.SCCWRP) <- colnames(data.SCCWRP)
+    rownames(data.rand.SCCWRP) <- rownames(data.SCCWRP)
     #Generate a presence/absence dataframe for zeta diversity analysis of FFGs.
     #Rows for samples, columns for FFGs IDs.
     PAFFG[is.na(PAFFG)] <- 0
@@ -128,73 +152,117 @@ for(j in 1:100){
     colnames(ffg.rand.SCCWRP) <- colnames(ffg.SCCWRP)
     rownames(ffg.rand.SCCWRP) <- rownames(ffg.SCCWRP)
     #Calculate zeta diversity decay for taxa within each watershed set of samples.
-    zetaDecay <- Zeta.decline.ex(data.SCCWRP,orders=1:10,plot=FALSE,rescale=FALSE)
+    zetaDecay <- Zeta.decline.ex(data.SCCWRP,orders=1:samplingNum,plot=FALSE,rescale=TRUE)
     ExpIntercept <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
     ExpExp <- zetaDecay$zeta.exp$coefficients[2] #Zeta diversity exponential decay exponent.
     ExpAIC <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
-    PLIntercept <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
+    zeta_N <- Zeta.order.ex(data.SCCWRP,order=samplingNum,rescale=TRUE)$zeta.val #Higher order zeta diversity measure.
     PLExp <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
     PLAIC <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
-    zeta_1 <- Zeta.order.ex(data.SCCWRP,order=1,rescale=FALSE) #Zeta order 1 for taxa.
+    zeta_1 <- Zeta.order.ex(data.SCCWRP,order=1,rescale=TRUE) #Zeta order 1 for taxa.
     MeanAlpha <- zeta_1$zeta.val #Mean alpha diversity for taxa.
     SDAlpha <- zeta_1$zeta.val.sd #Standard deviation on alpha diversity for taxa.
-    zeta_2 <- Zeta.order.ex(data.SCCWRP,order=2,rescale=FALSE) #Zeta order 2 for taxa.
-    Beta <- zeta_2$zeta.val/(2*zeta_1$zeta.val-zeta_2$zeta.val) #Beta diversity for taxa based on Jaccard dissimilarity.
+    Beta <- mean(vegdist(data.SCCWRP,method="jaccard")) #Beta diversity for taxa based on Jaccard dissimilarity.
+    #Calculate zeta diversity decay for randomly reassigned gener within each watershed set of samples.
+    zetaDecay <- Zeta.decline.ex(data.rand.SCCWRP,orders=1:samplingNum,plot=FALSE,rescale=TRUE)
+    ExpInterceptRand <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
+    ExpExpRand <- zetaDecay$zeta.exp$coefficients[2] #Zeta diversity exponential decay exponent.
+    ExpAICRand <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
+    zeta_NRand <- Zeta.order.ex(data.rand.SCCWRP,order=samplingNum,rescale=TRUE)$zeta.val #Higher order zeta diversity measure.
+    PLExpRand <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
+    PLAICRand <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
+    zeta_1 <- Zeta.order.ex(data.rand.SCCWRP,order=1,rescale=TRUE) #Zeta order 1 for FFGs.
+    MeanAlphaRand <- zeta_1$zeta.val #Mean alpha diversity for FFGs.
+    SDAlphaRand <- zeta_1$zeta.val.sd #Standard deviation on alpha diversity for FFGs.
+    BetaRand <- mean(vegdist(data.rand.SCCWRP,method="jaccard")) #Beta diversity for genera based on Jaccard dissimilarity.
     #Calculate zeta diversity decay for FFGs within each watershed set of samples.
-    zetaDecay <- Zeta.decline.ex(ffg.SCCWRP,orders=1:10,plot=FALSE)
+    zetaDecay <- Zeta.decline.ex(ffg.SCCWRP,orders=1:samplingNum,plot=FALSE,rescale=TRUE)
     ExpInterceptFFG <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
     ExpExpFFG <- zetaDecay$zeta.exp$coefficients[2] #Zeta diversity exponential decay exponent.
     ExpAICFFG <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
-    PLInterceptFFG <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
+    zeta_NFFG <- Zeta.order.ex(ffg.SCCWRP,order=samplingNum,rescale=TRUE)$zeta.val #Higher order zeta diversity measure.
     PLExpFFG <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
     PLAICFFG <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
-    zeta_1 <- Zeta.order.ex(ffg.SCCWRP,order=1,rescale=FALSE) #Zeta order 1 for FFGs.
+    zeta_1 <- Zeta.order.ex(ffg.SCCWRP,order=1,rescale=TRUE) #Zeta order 1 for FFGs.
     MeanAlphaFFG <- zeta_1$zeta.val #Mean alpha diversity for FFGs.
     SDAlphaFFG <- zeta_1$zeta.val.sd #Standard deviation on alpha diversity for FFGs.
-    zeta_2 <- Zeta.order.ex(ffg.SCCWRP,order=2,rescale=FALSE) #Zeta order 2 for FFGs.
-    BetaFFG <- zeta_2$zeta.val/(2*zeta_1$zeta.val-zeta_2$zeta.val) #Beta diversity for FFGs based on Jaccard dissimilarity.
+    BetaFFG <- mean(vegdist(ffg.SCCWRP,method="jaccard")) #Beta diversity for FFGs based on Jaccard dissimilarity.
     #Calculate zeta diversity decay for randomly reassigned FFGs within each watershed set of samples.
-    zetaDecay <- Zeta.decline.ex(ffg.rand.SCCWRP,orders=1:10,plot=FALSE,rescale=FALSE)
+    zetaDecay <- Zeta.decline.ex(ffg.rand.SCCWRP,orders=1:samplingNum,plot=FALSE,rescale=TRUE)
     ExpInterceptFFGRand <- zetaDecay$zeta.exp$coefficients[1] #Zeta diversity exponential decay intercept.
     ExpExpFFGRand <- zetaDecay$zeta.exp$coefficients[2] #Zeta diversity exponential decay exponent.
     ExpAICFFGRand <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
-    PLInterceptFFGRand <- zetaDecay$zeta.pl$coefficients[1] #Zeta diversity power law decay intercept.
+    zeta_NFFGRand <- Zeta.order.ex(ffg.rand.SCCWRP,order=samplingNum,rescale=TRUE)$zeta.val #Higher order zeta diversity measure.
     PLExpFFGRand <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
     PLAICFFGRand <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
-    zeta_1 <- Zeta.order.ex(ffg.rand.SCCWRP,order=1,rescale=FALSE) #Zeta order 1 for FFGs.
+    zeta_1 <- Zeta.order.ex(ffg.rand.SCCWRP,order=1,rescale=TRUE) #Zeta order 1 for FFGs.
     MeanAlphaFFGRand <- zeta_1$zeta.val #Mean alpha diversity for FFGs.
     SDAlphaFFGRand <- zeta_1$zeta.val.sd #Standard deviation on alpha diversity for FFGs.
-    zeta_2 <- Zeta.order.ex(ffg.rand.SCCWRP,order=2,rescale=FALSE) #Zeta order 2 for FFGs.
-    BetaFFGRand <- zeta_2$zeta.val/(2*zeta_1$zeta.val-zeta_2$zeta.val) #Beta diversity for FFGs based on Jaccard dissimilarity.
-    row <- t(as.data.frame(c(WS,mean(metadata$CSCI),mean(metadata$LU_2000_5K),sd(metadata$LU_2000_5K),mean(metadata$altitude),sd(metadata$altitude),MeanAlpha,SDAlpha,Beta,ExpIntercept,ExpExp,ExpAIC,PLIntercept,PLExp,PLAIC,MeanAlphaFFG,SDAlphaFFG,BetaFFG,ExpInterceptFFG,ExpExpFFG,ExpAICFFG,PLInterceptFFG,PLExpFFG,PLAICFFG,MeanAlphaFFGRand,SDAlphaFFGRand,BetaFFGRand,ExpInterceptFFGRand,ExpExpFFGRand,ExpAICFFGRand,PLInterceptFFGRand,PLExpFFGRand,PLAICFFGRand)))
+    BetaFFGRand <- mean(vegdist(ffg.rand.SCCWRP,method="jaccard")) #Beta diversity for FFGs based on Jaccard dissimilarity.
+    row <- t(as.data.frame(c(WS,mean(metadata$CSCI),mean(metadata$LU_2000_5K),sd(metadata$LU_2000_5K),mean(metadata$altitude),sd(metadata$altitude),MeanDist,SDDist,MeanAlpha,SDAlpha,Beta,ExpIntercept,ExpExp,ExpAIC,zeta_N,PLExp,PLAIC,MeanAlphaFFG,SDAlphaFFG,BetaFFG,ExpInterceptFFG,ExpExpFFG,ExpAICFFG,zeta_NFFG,PLExpFFG,PLAICFFG,MeanAlphaFFGRand,SDAlphaFFGRand,BetaFFGRand,ExpInterceptFFGRand,ExpExpFFGRand,ExpAICFFGRand,zeta_NFFGRand,PLExpFFGRand,PLAICFFGRand,MeanAlphaRand,SDAlphaRand,BetaRand,ExpInterceptRand,ExpExpRand,ExpAICRand,zeta_NRand,PLExpRand,PLAICRand)))
     zetaAnalysis <- rbind(zetaAnalysis,row)
-    print(paste(j,row))
+    print(paste(j,WS))
   }
 }
-colnames(zetaAnalysis) <- c("Watershed","MeanCSCI","MeanLU","SDLU","MeanAltitude","SDAltitude","MeanAlpha","SDAlpha","Beta","ExpIntercept","ExpExp","ExpAIC","PLIntercept","PLExp","PLAIC","MeanAlphaFFG","SDAlphaFFG","BetaFFG","ExpInterceptFFG","ExpExpFFG","ExpAICFFG","PLInterceptFFG","PLExpFFG","PLAICFFG","MeanAlphaFFGRand","SDAlphaFFGRand","BetaFFGRand","ExpInterceptFFGRand","ExpExpFFGRand","ExpAICFFGRand","PLInterceptFFGRand","PLExpFFGRand","PLAICFFGRand")
+colnames(zetaAnalysis) <- c("Watershed","MeanCSCI","MeanLU","SDLU","MeanAltitude","SDAltitude","MeanDist","SDDist","MeanAlpha","SDAlpha","Beta","ExpIntercept","ExpExp","ExpAIC","zeta_N","PLExp","PLAIC","MeanAlphaFFG","SDAlphaFFG","BetaFFG","ExpInterceptFFG","ExpExpFFG","ExpAICFFG","zeta_NFFG","PLExpFFG","PLAICFFG","MeanAlphaFFGRand","SDAlphaFFGRand","BetaFFGRand","ExpInterceptFFGRand","ExpExpFFGRand","ExpAICFFGRand","zeta_NFFGRand","PLExpFFGRand","PLAICFFGRand","MeanAlphaRand","SDAlphaRand","BetaRand","ExpInterceptRand","ExpExpRand","ExpAICRand","zeta_NRand","PLExpRand","PLAICRand")
 zetaAnalysis[,1:ncol(zetaAnalysis)] <- sapply(zetaAnalysis[,1:ncol(zetaAnalysis)],as.character)
 zetaAnalysis[,2:ncol(zetaAnalysis)] <- sapply(zetaAnalysis[,2:ncol(zetaAnalysis)],as.numeric)
 rownames(zetaAnalysis) <- 1:nrow(zetaAnalysis)
-#write.table(zetaAnalysis,"zetaAnalysis100PermutationsHUC8v2.txt",quote=FALSE,sep="\t",row.names = FALSE)
-zetaAnalysis <- read.table("zetaAnalysis100PermutationsHUC8.txt",header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+#write.table(zetaAnalysis,"zetaAnalysis100PermutationsHUC8Dist.txt",quote=FALSE,sep="\t",row.names = FALSE)
+zetaAnalysis <- read.table("zetaAnalysis100PermutationsHUC8Dist.txt",header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
 
-#zetaModel <- lm(MeanCSCI ~ MeanAlpha+MeanAlphaFFG+Beta+BetaFFG+PLExp+PLExpFFG, data=zetaAnalysis)
-zetaModel <- lm(MeanCSCI ~ MeanAlpha+MeanAlphaFFG+Beta+BetaFFG+PLExpFFG, data=zetaAnalysis)
+zetaModel <- lm(MeanCSCI ~ MeanAlpha+MeanAlphaFFG+Beta+BetaFFG+PLExp+PLExpFFG+zeta_N+zeta_NFFG, data=zetaAnalysis)
+printCoefmat(coef(summary(step(zetaModel)))) #Determine parameters to drop from model via AIC scores.
+zetaModel2 <- lm(MeanCSCI ~ MeanAlpha+MeanAlphaFFG+Beta+BetaFFG+zeta_N+zeta_NFFG, data=zetaAnalysis)# Drop one parameter by p.
+printCoefmat(coef(summary(step(zetaModel2))))
+
 summary(zetaModel)
 zetaModel$coefficients
 anova(zetaModel)
 calc.relimp(zetaModel,type="lmg",rela=TRUE)
 
 #calculate a linear model fit.
-#zetaAnalysis$fit1 <- zetaModel$coefficients[1]+zetaAnalysis$MeanAlpha*zetaModel$coefficients[2]+zetaAnalysis$MeanAlphaFFG*zetaModel$coefficients[3]+zetaAnalysis$Beta*zetaModel$coefficients[4]+zetaAnalysis$BetaFFG*zetaModel$coefficients[5]+zetaAnalysis$PLExp*zetaModel$coefficients[6]+zetaAnalysis$PLExpFFG*zetaModel$coefficients[7]
-zetaAnalysis$fit1 <- zetaModel$coefficients[1]+zetaAnalysis$MeanAlpha*zetaModel$coefficients[2]+zetaAnalysis$MeanAlphaFFG*zetaModel$coefficients[3]+zetaAnalysis$Beta*zetaModel$coefficients[4]+zetaAnalysis$BetaFFG*zetaModel$coefficients[5]+zetaAnalysis$PLExpFFG*zetaModel$coefficients[6]
+zetaAnalysis$fit1 <- zetaModel$coefficients[1]+zetaAnalysis$MeanAlpha*zetaModel$coefficients[2]+zetaAnalysis$MeanAlphaFFG*zetaModel$coefficients[3]+zetaAnalysis$Beta*zetaModel$coefficients[4]+zetaAnalysis$BetaFFG*zetaModel$coefficients[5]+zetaAnalysis$PLExp*zetaModel$coefficients[6]+zetaAnalysis$PLExpFFG*zetaModel$coefficients[7]+zetaAnalysis$zeta_N*zetaModel$coefficients[8]+zetaAnalysis$zeta_NFFG*zetaModel$coefficients[9]
+zetaAnalysis$fit2 <- zetaModel$coefficients[1]+zetaAnalysis$MeanAlpha*zetaModel$coefficients[2]+zetaAnalysis$MeanAlphaFFG*zetaModel$coefficients[3]+zetaAnalysis$Beta*zetaModel$coefficients[4]+zetaAnalysis$BetaFFG*zetaModel$coefficients[5]+zetaAnalysis$zeta_N*zetaModel$coefficients[8]+zetaAnalysis$zeta_NFFG*zetaModel$coefficients[9]
 
-plot(zetaAnalysis$MeanCSCI,zetaAnalysis$fit1)
-cor.test(zetaAnalysis$MeanCSCI,zetaAnalysis$fit1,method="pearson")
+#To generate map of data for a given environmental parameter in California.
+library(ggmap)
+library(maps)
+library(mapdata)
+library(munsell)
+dev.off()
+#Aggregate mean health indices by watershed for mapping.
+zetaMean <- zetaAnalysis[,c("Watershed","MeanCSCI","fit2","zeta_N","zeta_NFFG")]
+zetaMean <- aggregate(zetaMean[,2:3],list(zetaMean$Watershed),mean)
+colnames(zetaMean) <- c("HUC8","MeanCSCI","ModelIndex","zeta_10_taxa","zeta_10_functional")
+MapCoordinates <- join(GISBioDataLWS,zetaMean,by=c("HUC8"))
+MapCoordinates <- MapCoordinates[,c("LU_2000_5K","altitude","MeanCSCI","ModelIndex","zeta_10_taxa","zeta_10_functional","Longitude","Latitude")]
+colnames(MapCoordinates) = c('LandUse','Altitude','MeanCSCI','ModelIndex','zeta_10_taxa','zeta_10_functional','lon','lat')
+MapCoordinates <- MapCoordinates[!duplicated(MapCoordinates),]
+MapCoordinates <- na.omit(MapCoordinates)
+CABox <- make_bbox(lat=lat,lon=lon,data=MapCoordinates)
+CalMap <- get_map(location = CABox, source = "google", maptype = "terrain",zoom=6)
+ggmap(CalMap)+geom_point(data=MapCoordinates,mapping=aes(x=lon,y=lat,color=zeta_10_taxa))+scale_color_gradientn(limits=c(0,15),colours = rainbow(7))
+
+plot(zetaAnalysis$MeanCSCI,zetaAnalysis$fit1,xlab = "Mean CSCI score per sample group", ylab="Fitted stream conditions index")
+abline(lm(fit1~MeanCSCI,data=zetaAnalysis),col="red")
+legend("topleft", bty="n", legend=paste("R2 =", format(modelCor$estimate, digits=4),"\np < 2.2e-16"))
 
 #Regression between network parameters.
 library(Hmisc)
 library(corrplot)
 library("PerformanceAnalytics")
 #Each significance level is associated to a symbol : p-values(0, 0.001, 0.01, 0.05, 0.1, 1) <=> symbols(“***”, “**”, “*”, “.”, " “)
-chart.Correlation(zetaAnalysis[,c("MeanCSCI","MeanAltitude","MeanLU","MeanAlpha","MeanAlphaFFG","SDAlpha","SDAlphaFFG","Beta","BetaFFG","PLExp","PLExpFFG","fit1")], histogram=FALSE, method="pearson")
+chart.Correlation(zetaAnalysis[,c("MeanCSCI","MeanAltitude","MeanLU","MeanAlpha","MeanAlphaFFG","zeta_N","zeta_NFFG","Beta","BetaFFG","PLExp","PLExpFFG","fit1")], histogram=FALSE, method="pearson")
+
+#Probabilities of detecting a member of a particular taxon or functional feeding group.
+histDataFFG <- as.data.frame(table(GISBioDataLWS$FunctionalFeedingGroup))
+histDataFFG$Freq <- histDataFFG$Freq/nrow(GISBioDataLWS)
+histData <- as.data.frame(table(GISBioDataLWS$FinalID))
+histData$Freq <- histData$Freq/length(unique(GISBioDataLWS$UniqueID))
+
+#Investigate trends in the abundances of taxa by FFGs.
+GISBioDataLWSFFG <- GISBioDataLWS[,c("UniqueID","LU_2000_5K","altitude","FunctionalFeedingGroup","FFGCount","ActualOrganismCount")]
+GISBioDataLWSFFG <- GISBioDataLWSFFG[!duplicated(GISBioDataLWSFFG),]
+GISBioDataLWSFFG$FFGRA <- GISBioDataLWSFFG$FFGCount/GISBioDataLWSFFG$ActualOrganismCount
+cor.test(GISBioDataLWSFFG[GISBioDataLWSFFG$FunctionalFeedingGroup=="CG",]$LU_2000_5K,GISBioDataLWSFFG[GISBioDataLWSFFG$FunctionalFeedingGroup=="CG",]$FFGRA)
