@@ -56,6 +56,7 @@ set.seed(1)
 #a watershed and land use quantile for co-occurrence network generation using the eLSA program.
 #Run 100 permutations to generate all of the raw input data to create co-occurrence networks.
 
+commandLines <- data.frame()
 for(iteration in 1:100){
   for(watershed in unique(GISBioDataLargeWS$Watershed)){
     for(i in 1:length(LUquantile)){
@@ -136,12 +137,44 @@ for(iteration in 1:100){
             }
           }
           eLSAInput <- eLSAtmp
-          filename = paste("LUSweepCAWatershedv2",watershed,"Years",spotNum,"Reps",repNum,"MeanLU",meanLU,"nTaxa",length(localTaxa),".txt",sep="")
-          z=z+1
-          print(paste(z,watershed,LULow,LUHigh,meanLU,ncol(eLSAInput),nrow(eLSAInput),length(localTaxa),filename))
+          filename = paste("LUSweepCAWatershedPerm100",watershed,"Years",spotNum,"Reps",repNum,"MeanLU",meanLU,"nTaxa",length(localTaxa),".txt",sep="")
+          commandLine <- data.frame()
+          commandLine[1,1] = paste("lsa_compute ",filename," -r ",repNum," -s ",spotNum," ",gsub(".txt","Network.txt",filename),";",sep="")
+          print(commandLine[1,1])
+          commandLines <- rbind(commandLines,commandLine)
           #write.table(eLSAInput,filename,quote=FALSE,sep="\t",row.names = FALSE)
         }
       }
     }
   } 
 }
+
+#If the full file of eLSA commands already exists, just read it in here instead of generating it from above.
+commandLines <- read.table("eLSAPerm100.sh", header=FALSE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+
+processorNum = 500 #How many network generation processes will be run in parallel?
+
+##The header dataframe represents the lines to include in each shell script to run them as part of SBATCH on the cluster.
+## The header requests a job that runs for 300 hours using one processor and node per job, with a memory request of 2GB per job.
+
+header <- data.frame()
+header[1,1] <- "#!/bin/sh"
+header[2,1] <- "#SBATCH -t300:00:00"
+header[3,1] <- "#SBATCH -n1"
+header[4,1] <- "#SBATCH -c1"
+header[5,1] <- "#SBATCH --mem=2000m"
+header[6,1] <- "#SBATCH -pcegs"
+header[7,1] <- "cd ~/panfs/SCCWRP"
+
+#Split eLSA commands into separate shell scripts to run in parallel on a cluster.
+for(i in 1:processorNum){
+  #print(paste((nrow(commandLines)/processorNum)*(i-1)+1, (nrow(commandLines)/processorNum)*i))
+  lowRow <- (nrow(commandLines)/processorNum)*(i-1)+1
+  highRow <- (nrow(commandLines)/processorNum)*i
+  commandFile <- as.data.frame(commandLines[lowRow:highRow,])
+  colnames(commandFile) <- c("V1")
+  commandFile <- rbind(header,commandFile) #Add the header to each shell script to run as part of a batch
+  filename <- paste("eLSA",i,".sh",sep="")
+  write.table(commandFile,filename,quote=FALSE,sep="\t",row.names=FALSE,col.names=FALSE)
+}
+
