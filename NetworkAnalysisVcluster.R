@@ -34,7 +34,7 @@ for(networkFile in networkfiles){
   #Generate network graph and begin calculating network parameters.
   if(nrow(networkdata) > 0){
     networkgraph=graph.data.frame(networkdata,directed=FALSE)
-    Network_size<-network.size(as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency"))
+    #N <- network.size(as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency"))
     if(ecount(networkgraph)>0){
       #Get the full weighted adjacency matrix.
       networkmatrix <- as.matrix(get.adjacency(networkgraph,attr='weight'))
@@ -60,13 +60,14 @@ for(networkFile in networkfiles){
       #Calculate modularity
       networkModularity <- modularity(cluster_edge_betweenness(networkgraph, weights=NULL,directed=FALSE))
       M <- networkModularity
-      networkNodecount <-network.size(as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency"))
-      # Get the number of unique network edges
-      networkEdgecount <- network.edgecount(as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency"))
       # Get the number of nodes
       networkNodecount <- network.size(as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency"))
+      N <- networkNodecount
+      # Get the number of unique network edges
+      networkEdgecount <- network.edgecount(as.network(get.adjacency(networkgraph,attr='weight',sparse=FALSE),directed=FALSE,loops=FALSE,matrix.type="adjacency"))
       # Get the average degree per node.
       k <- (2*networkEdgecount)/networkNodecount
+      K <- k
       # Calculate the modularity of the random network.
       networkRandModularity <- (1-(2/sqrt(networkNodecount)))*(2/k)^(2/3)
       # Calculate the log ratio of the modularities.
@@ -119,8 +120,10 @@ for(networkFile in networkfiles){
         networkEdgecountCon <- networkEdgecount
         # Get the number of nodes
         networkNodecount <- network.size(adj)
+        con_N <- networkNodecount
         # Get the average degree per node.
         k <- (2*networkEdgecount)/networkNodecount
+        con_k <- k
         # Get the random characteristic path length.
         networkRandLength <- 0.5+((log(networkNodecount)-0.5772156649)/log(k))
         # Get the random clustering coefficient.
@@ -197,8 +200,10 @@ for(networkFile in networkfiles){
         networkEdgecountCov <- networkEdgecount
         # Get the number of nodes
         networkNodecount <- network.size(adj)
+        cov_N <- networkNodecount
         # Get the average degree per node.
         k <- (2*networkEdgecount)/networkNodecount
+        cov_k <- k
         # Get the random characteristic path length.
         networkRandLength <- 0.5+((log(networkNodecount)-0.5772156649)/log(k))
         # Get the random clustering coefficient.
@@ -247,7 +252,7 @@ for(networkFile in networkfiles){
     dat[1,16] <- zeta
     dat[1,17] <- con_C
     dat[1,18] <- cov_C
-    dat[1,19] <- Network_size
+    dat[1,19] <- N
     dat[1,20] <- Pm <- networkEdgecountCov/(networkEdgecountCov+networkEdgecountCon)
     dat[1,21] <- lambda_network_m_Con
     dat[1,22] <- lambda_network_m_Cov
@@ -268,11 +273,19 @@ for(networkFile in networkfiles){
     dat[1,37] <- l_con_rzeta
     dat[1,38] <- zeta_rand_Cov
     dat[1,39] <- l_cov_rzeta
+    dat[1,40] <- cov_N
+    dat[1,41] <- networkEdgecountCov
+    dat[1,42] <- cov_k
+    dat[1,43] <- con_N
+    dat[1,44] <- networkEdgecountCon
+    dat[1,45] <- con_k
+    dat[1,46] <- networkEdgecount
+    dat[1,47] <- K
     networkAnalysis <- rbind(networkAnalysis,dat)
-    print(paste(networkFile,meanLU,l_con_rL,l_con_rCl,l_con_rM,l_cov_rL,l_cov_rCl,l_cov_rM,lambda_network_m,con_L,con_Cl,con_M,cov_L,cov_Cl,cov_M,zeta,con_C,cov_C,Network_size,Pm,lambda_network_m_Con,lambda_network_m_Cov,zeta_Con,zeta_Cov,gamma_Con,gamma_Cov,gamma,lambda_rand_m,lambda_rand_Con,lambda_rand_Cov,M,l_rM,meanStrength,meanStrength_Cov,meanStrength_Con,zeta_rand_Con,l_con_rzeta,zeta_rand_Cov,l_cov_rzeta))
+    print(paste(networkFile,meanLU,l_con_rL,l_con_rCl,l_con_rM,l_cov_rL,l_cov_rCl,l_cov_rM,lambda_network_m,con_L,con_Cl,con_M,cov_L,cov_Cl,cov_M,zeta,con_C,cov_C,N,Pm,lambda_network_m_Con,lambda_network_m_Cov,zeta_Con,zeta_Cov,gamma_Con,gamma_Cov,gamma,lambda_rand_m,lambda_rand_Con,lambda_rand_Cov,M,l_rM,meanStrength,meanStrength_Cov,meanStrength_Con,zeta_rand_Con,l_con_rzeta,zeta_rand_Cov,l_cov_rzeta,cov_N,networkEdgecountCov,cov_k,con_N,networkEdgecountCon,con_k,networkEdgecount,K))
   }
 }
-colnames(networkAnalysis) <- c("filename","meanLU","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","lambda_network_m","con_L","con_Cl","con_M","cov_L","cov_Cl","cov_M","zeta","con_C","cov_C","Network_size","Pm","lambda_network_m_Con","lambda_network_m_Cov","zeta_Con","zeta_Cov","gamma_Con","gamma_Cov","gamma","lambda_rand_m","lambda_rand_Con","lambda_rand_Cov","M","l_rM","meanStrength","meanStrength_Cov","meanStrength_Con","zeta_rand_Con","l_con_rzeta","zeta_rand_Cov","l_cov_rzeta")
+colnames(networkAnalysis) <- c("filename","meanLU","l_con_rL","l_con_rCl","l_con_rM","l_cov_rL","l_cov_rCl","l_cov_rM","lambda_network_m","con_L","con_Cl","con_M","cov_L","cov_Cl","cov_M","zeta","con_C","cov_C","N","Pm","lambda_network_m_Con","lambda_network_m_Cov","zeta_Con","zeta_Cov","gamma_Con","gamma_Cov","gamma","lambda_rand_m","lambda_rand_Con","lambda_rand_Cov","M","l_rM","meanStrength","meanStrength_Cov","meanStrength_Con","zeta_rand_Con","l_con_rzeta","zeta_rand_Cov","l_cov_rzeta","cov_N","networkEdgecountCov","cov_k","con_N","networkEdgecountCon","con_k","networkEdgecount","K")
 networkAnalysis[networkAnalysis=="-Inf"] <- NA
 networkAnalysis[networkAnalysis=="Inf"] <- NA
 networkAnalysis <- arrange(networkAnalysis,meanLU)
