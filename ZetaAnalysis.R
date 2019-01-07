@@ -218,14 +218,21 @@ printCoefmat(coef(summary(step(zetaModel)))) #Determine parameters to drop from 
 zetaModel2 <- lm(MeanCSCI ~ MeanAlpha+MeanAlphaFFG+Beta+BetaFFG+zeta_N+zeta_NFFG, data=zetaAnalysis)# Drop one parameter by p.
 printCoefmat(coef(summary(step(zetaModel2))))
 
+#Model summaries
 summary(zetaModel)
 zetaModel$coefficients
 anova(zetaModel)
 calc.relimp(zetaModel,type="lmg",rela=TRUE)
+# Model 2 is for publication
+summary(zetaModel2)
+zetaModel2$coefficients
+anova(zetaModel2)
+calc.relimp(zetaModel2,type="lmg",rela=TRUE)
+
 
 #calculate a linear model fit.
 zetaAnalysis$fit1 <- zetaModel$coefficients[1]+zetaAnalysis$MeanAlpha*zetaModel$coefficients[2]+zetaAnalysis$MeanAlphaFFG*zetaModel$coefficients[3]+zetaAnalysis$Beta*zetaModel$coefficients[4]+zetaAnalysis$BetaFFG*zetaModel$coefficients[5]+zetaAnalysis$PLExp*zetaModel$coefficients[6]+zetaAnalysis$PLExpFFG*zetaModel$coefficients[7]+zetaAnalysis$zeta_N*zetaModel$coefficients[8]+zetaAnalysis$zeta_NFFG*zetaModel$coefficients[9]
-zetaAnalysis$fit2 <- zetaModel$coefficients[1]+zetaAnalysis$MeanAlpha*zetaModel$coefficients[2]+zetaAnalysis$MeanAlphaFFG*zetaModel$coefficients[3]+zetaAnalysis$Beta*zetaModel$coefficients[4]+zetaAnalysis$BetaFFG*zetaModel$coefficients[5]+zetaAnalysis$zeta_N*zetaModel$coefficients[8]+zetaAnalysis$zeta_NFFG*zetaModel$coefficients[9]
+zetaAnalysis$fit2 <- zetaModel2$coefficients[1]+zetaAnalysis$MeanAlpha*zetaModel2$coefficients[2]+zetaAnalysis$MeanAlphaFFG*zetaModel2$coefficients[3]+zetaAnalysis$Beta*zetaModel2$coefficients[4]+zetaAnalysis$BetaFFG*zetaModel2$coefficients[5]+zetaAnalysis$zeta_N*zetaModel2$coefficients[6]+zetaAnalysis$zeta_NFFG*zetaModel2$coefficients[7]
 
 #To generate map of data for a given environmental parameter in California.
 library(ggmap)
@@ -252,7 +259,7 @@ CalMap = leaflet(MapCoordinates) %>%
 ColorScale <- colorNumeric(palette=rainbow(10),domain=MapCoordinates$ModelIndex)
 CalMap %>% addCircleMarkers(color = ~ColorScale(ModelIndex), fill = TRUE,radius=0.1,fillOpacity = 0.1) %>% 
   addProviderTiles(providers$Esri.WorldTopoMap) %>%
-  addLegend("topright", pal=ColorScale,values=~ModelIndex,title="Mean Modeled Index")
+  leaflet::addLegend(position="topright", pal=ColorScale,values=~ModelIndex,title="Mean Modeled Index")
 
 #Plotting indices against each other.
 plot(zetaAnalysis$MeanCSCI,zetaAnalysis$fit1,xlab = "Mean CSCI score per sample group", ylab="Fitted stream conditions index")
