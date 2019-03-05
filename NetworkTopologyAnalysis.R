@@ -84,7 +84,7 @@ cor.test(SCCWRPHighAltitude$Year,SCCWRPHighAltitude$CSCI)
 varList <- c("meanLU","M","meanStrength","zeta","C","N","K","networkEdgecount")
 networkCorrelations <- data.frame()
 #Find watersheds that fit within certain geographic bounds
-watershedsByGeography <- subset(SCCWRP, Longitude >= meean(SCCWRP$Longitude))
+watershedsByGeography <- subset(SCCWRP, Longitude >= mean(SCCWRP$Longitude))
 #Subset networks by geography
 networkAnalysisSubset <- subset(networkAnalysis, Watershed %in% unique(watershedsByGeography$Watershed))
 for(var in varList){
