@@ -54,6 +54,11 @@ calc.relimp(networkModel,type="lmg",rela=FALSE)
 networkPlot <- ggplot(networkAnalysis,aes(x=ModGroups,y=M,color=lambda_network_m))+geom_point()+theme(text = element_text(size=25))+geom_smooth(method=glm, aes(fill=zeta))
 networkPlot+xlab("ModGroups")+ylab("M")+scale_color_gradientn("lambda_network_m",colours = plasma(10))
 
+#How much does land use appear to change by year?
+LUByYear <- as.data.frame(tapply(SCCWRP$LU, SCCWRP$Year, mean))
+colnames(LUByYear) <- c("LU")
+LUByYear$Year <- as.numeric(rownames(LUByYear))
+
 #What factors are underlying variations in taxonomic richness?
 SCCWRPRaw <- read.table("CSCI.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
 tmp <- as.data.frame(table(SCCWRPRaw$Watershed))
@@ -61,6 +66,34 @@ colnames(tmp) <- c("Watershed","Nsamples")
 tmp$Watershed <- as.character(tmp$Watershed)
 SCCWRPRaw <- join(SCCWRPRaw,tmp)
 SCCWRP <- filter(SCCWRPRaw,Nsamples>=30)
+#Find the extreme geographic bounds of samples within each watershed.
+tmp <- as.data.frame(tapply(SCCWRP$Latitude, SCCWRP$Watershed, max))
+colnames(tmp) <- c("Northmost")
+tmp$Watershed <- row.names(tmp)
+SCCWRP <- merge(SCCWRP,tmp,by.x=c("Watershed"),by.y=c("Watershed"))
+tmp <- as.data.frame(tapply(SCCWRP$Latitude, SCCWRP$Watershed, min))
+colnames(tmp) <- c("Southmost")
+tmp$Watershed <- row.names(tmp)
+SCCWRP <- merge(SCCWRP,tmp,by.x=c("Watershed"),by.y=c("Watershed"))
+tmp <- as.data.frame(tapply(SCCWRP$Longitude, SCCWRP$Watershed, max))
+colnames(tmp) <- c("Eastmost")
+tmp$Watershed <- row.names(tmp)
+SCCWRP <- merge(SCCWRP,tmp,by.x=c("Watershed"),by.y=c("Watershed"))
+tmp <- as.data.frame(tapply(SCCWRP$Longitude, SCCWRP$Watershed, min))
+colnames(tmp) <- c("Westmost")
+tmp$Watershed <- row.names(tmp)
+SCCWRP <- merge(SCCWRP,tmp,by.x=c("Watershed"),by.y=c("Watershed"))
+#Find the centroid of samples within each watershed
+tmp <- as.data.frame(tapply(SCCWRP$Longitude, SCCWRP$Watershed, mean))
+colnames(tmp) <- c("CentroidLongitude")
+tmp$Watershed <- row.names(tmp)
+SCCWRP <- merge(SCCWRP,tmp,by.x=c("Watershed"),by.y=c("Watershed"))
+tmp <- as.data.frame(tapply(SCCWRP$Latitude, SCCWRP$Watershed, mean))
+colnames(tmp) <- c("CentroidLatitude")
+tmp$Watershed <- row.names(tmp)
+SCCWRP <- merge(SCCWRP,tmp,by.x=c("Watershed"),by.y=c("Watershed"))
+
+#Models of diversity versus factors.
 TaxaModel <- glm(nTaxa ~ Watershed+Year+altitude+LU+Watershed*Year*altitude*LU, data=SCCWRP)
 summary(aov(TaxaModel))
 summary(TaxaModel)
@@ -81,17 +114,16 @@ cor.test(SCCWRPLowAltitude$Year,SCCWRPLowAltitude$CSCI)
 cor.test(SCCWRPHighAltitude$Year,SCCWRPHighAltitude$CSCI)
 
 #Run through correlations between upstream land use and topology
-varList <- c("meanLU","M","meanStrength","zeta","C","N","K","networkEdgecount")
+varList <- c("meanLU","M","meanStrength","zeta","C")
 networkCorrelations <- data.frame()
 #Find watersheds that fit within certain geographic bounds
-watershedsByGeography <- subset(SCCWRP, Longitude >= mean(SCCWRP$Longitude))
+watershedsByGeography <- subset(SCCWRP, CentroidLongitude >= mean(SCCWRP$Longitude))
 #Subset networks by geography
 networkAnalysisSubset <- subset(networkAnalysis, Watershed %in% unique(watershedsByGeography$Watershed))
+#networkAnalysisSubset <- networkAnalysis
 for(var in varList){
-  topologyCorrelation <- cor.test(networkAnalysisSubset$meanLU,networkAnalysisSubset[,var],method="pearson")
-  resilienceCorrelation <- cor.test(networkAnalysisSubset$lambda_network_m,networkAnalysisSubset[,var],method="pearson")
-  print(paste("meanLU and",var,topologyCorrelation$estimate,topologyCorrelation$p.value))
-  print(paste("lambda_network_m and",var,resilienceCorrelation$estimate,resilienceCorrelation$p.value))
+  topologyCorrelation <- cor.test(networkAnalysisSubset$meanLU,networkAnalysisSubset[,var],method="spearman")
+  resilienceCorrelation <- cor.test(networkAnalysisSubset$lambda_network_m,networkAnalysisSubset[,var],method="spearman")
   dat <- data.frame()
   dat[1,1] <- var
   dat[1,2] <- topologyCorrelation$estimate
