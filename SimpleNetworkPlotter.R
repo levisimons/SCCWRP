@@ -12,7 +12,9 @@ setwd("~/Desktop/SCCWRP")
 
 #Set network file input.
 #networkFile <- "LUSweepCAWatershedPerm100SantaClaraYears9Reps6MeanLU21.29332588708nTaxa148Network.txt"
-networkFile <- "LUSweepCAWatershedPerm100SantaClaraYears13Reps4MeanLU1.48128463348nTaxa234Network.txt"
+networkFile <- "LUSweepCAWatershedPerm100WestWalkerYears9Reps8MeanLU0nTaxa152Network.txt"
+#Read in network file.
+networkdata <- read.delim(networkFile,header=TRUE, sep="\t",as.is=T,check.names=FALSE)
 #Filter out association network data based on P and Q scores, for the local similarity
 #between two factors, with values less than a particuar threshold.
 networkdata <- filter(networkdata, P <= 1e-4)
