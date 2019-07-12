@@ -36,7 +36,34 @@ Watersheds <- read.table("SCCWRPWatersheds.tsv", header=TRUE, sep="\t",as.is=T,s
 Watersheds$Watershed <- gsub('\\s+', '', Watersheds$Watershed)
 #Merge in watershed area
 GISBioData <- join(GISBioData,Watersheds,by=c("Watershed"))
-
+#Read in functional feeding group for each taxon.
+#Abbreviations used in denoting functional feeding groups are as follows ( http://www.safit.org/Docs/CABW_std_taxonomic_effort.pdf ):
+#P= predator MH= macrophyte herbivore OM= omnivore
+#PA= parasite PH= piercer herbivore XY= xylophage (wood eater)
+#CG= collector-gatherer SC= scraper
+#CF= collector filterer SH= shredder 
+FFG <- read.table("metadata.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
+# Filter data so only known functional feeding groups are kept.
+FFG <- subset(FFG, FunctionalFeedingGroup != "")
+# Generate functional feeding group data frame.
+FFG <- FFG[,c("FinalID","LifeStageCode","FunctionalFeedingGroup")]
+FFG <- subset(FFG,LifeStageCode=="L" | LifeStageCode=="X" | FinalID=="Hydrophilidae" | FinalID=="Hydraenidae")
+FFGUnique <- as.data.frame(unique(FFG$FunctionalFeedingGroup))
+colnames(FFGUnique) <- c("FunctionalFeedingGroup")
+FFGUnique$FunctionalFeedingGroup <- as.character(FFGUnique$FunctionalFeedingGroup)
+#Merge in functional feeding groups into sample data.
+GISBioData <- join(GISBioData,FFG[,c("FinalID","FunctionalFeedingGroup")],by=c("FinalID"))
+#Get the number of instances of taxa by functional feeding group by sample site.
+FFGCount <- as.data.frame(table(GISBioData[,c("UniqueID","FunctionalFeedingGroup")]))
+colnames(FFGCount) <- c("UniqueID","FunctionalFeedingGroup","FFGFreq")
+FFGCount <- merge(FFGCount,FFGUnique,all=TRUE)
+#Get the number of unique functional feeding groups by sample site.
+FFGTypeCount <- as.data.frame(table(FFGCount[FFGCount$FFGFreq!=0,c("UniqueID")]))
+colnames(FFGTypeCount) <- c("UniqueID","FFGTypeCount")
+#Merge these counts back into the data frame.
+GISBioData <- join(GISBioData,FFGCount,by=c("UniqueID","FunctionalFeedingGroup"))
+#Merge in the functional feeding group type count back into the data frame.
+GISBioData <- join(GISBioData,FFGTypeCount,by=c("UniqueID"))
 #Find watersheds with a larger enough set of samples for downstream analysis.
 sampleMin <- 15 #Minimum of 25 samples per watershed
 samplingNum <- 10 #Number of samples to select per sampling group within watershed.
@@ -177,17 +204,50 @@ write.table(networkAnalysis,"CooccurrenceAnalysis.txt",quote=FALSE,sep="\t",row.
 
 ##This part is used to run locally.
 require(relaimpo)
+#First simple linear model of network parameters.
 networkAnalysis <- read.table("CooccurrenceAnalysis.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
-networkModel <- lm(MeanCSCI ~ N+C+M+S+zeta,data=networkAnalysis)
+networkModel <- lm(MeanCSCI ~ N+C+S+M+zeta,data=networkAnalysis)
+#networkModel <- lm(MeanCSCI ~ N+C+M+S+zeta+lambda_1,data=networkAnalysis)
 summary(networkModel)
+anova(networkModel)
 calc.relimp(networkModel,type="lmg",rela=FALSE)
-networkAnalysis$ModeledCSCI <- networkModel$coefficients[1]+networkModel$coefficients[2]*networkAnalysis$N+networkModel$coefficients[3]*networkAnalysis$C+networkModel$coefficients[4]*networkAnalysis$M+networkModel$coefficients[5]*networkAnalysis$S+networkModel$coefficients[6]*networkAnalysis$zeta
-networkAnalysis$R_pos <- networkAnalysis$E_pos/networkAnalysis$E
-networkAnalysis$K_normalized <- networkAnalysis$K/networkAnalysis$E
-networkModel2 <- lm(MeanCSCI ~ N+C+M+zeta,data=networkAnalysis)
-summary(networkModel2)
-calc.relimp(networkModel2,type="lmg",rela=FALSE)
-networkAnalysis$ModeledCSCI2 <- networkModel2$coefficients[1]+networkModel2$coefficients[2]*networkAnalysis$N+networkModel2$coefficients[3]*networkAnalysis$C+networkModel2$coefficients[4]*networkAnalysis$M+networkModel2$coefficients[5]*networkAnalysis$zeta
+networkAnalysis$ModeledCSCI <- networkModel$coefficients[1]+networkModel$coefficients[2]*networkAnalysis$N+networkModel$coefficients[3]*networkAnalysis$C+networkModel$coefficients[4]*networkAnalysis$S+networkModel$coefficients[5]*networkAnalysis$M+networkModel$coefficients[6]*networkAnalysis$zeta
+printCoefmat(coef(summary(step(networkModel))))
+#networkAnalysis$ModeledCSCI <- networkModel$coefficients[1]+networkModel$coefficients[2]*networkAnalysis$N+networkModel$coefficients[3]*networkAnalysis$C_pos+networkModel$coefficients[4]*networkAnalysis$M_pos+networkModel$coefficients[5]*networkAnalysis$S_pos+networkModel$coefficients[6]*networkAnalysis$zeta_pos
 
+#Evaluating the mean and modeled CSCI against environmental parameters.
 calc.relimp(lm(MeanCSCI ~ MeanLU+MeanAltitude+MeanDist,data=networkAnalysis))
-calc.relimp(lm(ModeledCSCI2 ~ MeanLU+MeanAltitude+MeanDist,data=networkAnalysis))
+anova(lm(MeanCSCI ~ MeanLU+MeanAltitude+MeanDist,data=networkAnalysis))
+calc.relimp(lm(ModeledCSCI ~ MeanLU+MeanAltitude+MeanDist,data=networkAnalysis))
+anova(lm(ModeledCSCI ~ MeanLU+MeanAltitude+MeanDist,data=networkAnalysis))
+
+#Investigate trends between number of genera per functional feeding groups per site and other factors.
+FFGTrends <- GISBioDataLWS[,c("UniqueID","Watershed","LU_2000_5K","altitude","FunctionalFeedingGroup","FFGFreq","nTaxa","FFGTypeCount")]
+FFGTrends <- FFGTrends[!duplicated(FFGTrends),]
+FFGTrends <- merge(FFGUnique,FFGTrends,by=c("FunctionalFeedingGroup"),all.x=TRUE)
+FFGTrends[is.na(FFGTrends)] <- 0
+#Normalize the FFG frequency by the number of overall taxonomic groups per site.
+FFGTrends$FFGFreq_normalized <- FFGTrends$FFGFreq/FFGTrends$nTaxa
+#Compare FFG frequency by the number of overall taxonomic groups per site with altitude and land use.
+summary(lm(FFGTrends[FFGTrends$FunctionalFeedingGroup=="OM","FFGFreq_normalized"]~FFGTrends[FFGTrends$FunctionalFeedingGroup=="OM","LU_2000_5K"]+FFGTrends[FFGTrends$FunctionalFeedingGroup=="OM","altitude"]))
+#Decline in functional diversity with land use.
+cor.test(FFGTrends$LU_2000_5K,FFGTrends$FFGTypeCount)
+
+#Relations between functional diversity and co-occurrence network topology.
+networkFFG <- join(networkAnalysis,FFGTrends,by=c("Watershed"))
+cor.test(networkFFG[networkFFG$FunctionalFeedingGroup=="OM","FFGFreq_normalized"],networkFFG[networkFFG$FunctionalFeedingGroup=="OM","C"])
+cor.test(networkFFG[networkFFG$FunctionalFeedingGroup=="CG","FFGFreq_normalized"],networkFFG[networkFFG$FunctionalFeedingGroup=="CG","S"])
+anova(lm(networkFFG[networkFFG$FunctionalFeedingGroup=="OM","C"]~networkFFG[networkFFG$FunctionalFeedingGroup=="OM","FFGFreq_normalized"]+networkFFG[networkFFG$FunctionalFeedingGroup=="OM","Watershed"]))
+
+#Plot network patterns
+require(ggplot2)
+require(viridis)
+networkPlot <- ggplot(networkAnalysis, aes(x=MeanCSCI,y=ModeledCSCI,color=MeanLU))+geom_point()+theme(text = element_text(size=25))+geom_smooth(method=glm, aes(fill=ModeledCSCI))
+networkPlot+xlab("Mean CSCI")+ylab("Modeled CSCI")+scale_color_gradientn("Land use\n(% cover)",colours = rev(plasma(10)),limits=c(0,100))
+#
+networkPlot <- ggplot(networkAnalysis, aes(x=MeanCSCI,y=ModeledCSCI,color=log10(MeanAltitude)))+geom_point()+theme(text = element_text(size=25))+geom_smooth(method=glm, aes(fill=ModeledCSCI))
+networkPlot+xlab("Mean CSCI")+ylab("Modeled CSCI")+scale_color_gradientn("Altitude (m)",colours = rev(plasma(10)))
+#
+networkPlot <- ggplot(networkAnalysis, aes(x=MeanCSCI,y=ModeledCSCI,color=log10(MeanDist)))+geom_point()+theme(text = element_text(size=25))+geom_smooth(method=glm, aes(fill=ModeledCSCI))
+networkPlot+xlab("Mean CSCI")+ylab("Modeled CSCI")+scale_color_gradientn("Distance (m)",colours = rev(plasma(10)))
+#
