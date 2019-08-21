@@ -210,8 +210,8 @@ networkAnalysis <- read.table("CooccurrenceAnalysis.txt", header=TRUE, sep="\t",
 networkAnalysis <- networkAnalysis[!is.na(networkAnalysis$MeanCSCI),]
 networkAnalysis$CoVLU <- networkAnalysis$SDLU/networkAnalysis$MeanLU
 networkAnalysis$CoVAltitude <-  networkAnalysis$SDAltitude/networkAnalysis$MeanAltitude
-#networkModel <- lm(MeanCSCI ~ N+C+S+M+zeta,data=networkAnalysis)
-networkModel <- lm(MeanCSCI ~ C+M+S+zeta,data=networkAnalysis)
+networkModel <- lm(MeanCSCI ~ N+C+S+M+zeta,data=networkAnalysis)
+#networkModel <- lm(MeanCSCI ~ C+M+S+zeta,data=networkAnalysis)
 summary(networkModel)
 anova(networkModel)
 #adonis(MeanCSCI ~ N+C+S+M+zeta,data=networkAnalysis[!is.na(networkAnalysis$MeanCSCI),],strata = networkAnalysis[!is.na(networkAnalysis$MeanCSCI),"Watershed"],permutations=10,method="manhattan")
@@ -222,19 +222,11 @@ printCoefmat(coef(summary(step(networkModel))))
 
 # Assessing R2 shrinkage using 10-Fold Cross-Validation 
 require(bootstrap)
-# define functions 
-theta.fit <- function(x,y){lsfit(x,y)}
-theta.predict <- function(fit,x){cbind(1,x)%*%fit$coef}
-#Run for zero horizon images.
-# matrix of predictors
-#X <- as.matrix(networkAnalysis[,c("N","C","M","S","zeta")])
-X <- as.matrix(networkAnalysis[,c("C","M","S","zeta")])
-# vector of predicted values
-y <- as.matrix(networkAnalysis[,c("MeanCSCI")])
-#Run cross-validation
-results <- crossval(X,y,theta.fit,theta.predict,ngroup=10)
-cor(y, networkModel$fitted.values)**2 # raw R2 
-cor(y,results$cv.fit)**2 # cross-validated R2
+require(caret)
+set.seed(1)
+train.control <- trainControl(method="repeatedcv",number=10,repeats=10)
+CSCImodel <- train(MeanCSCI~N+C+M+S+zeta,data=networkAnalysis,method="lm",trControl=train.control)
+print(CSCImodel)
 
 #Evaluating the mean and modeled CSCI against environmental parameters.
 calc.relimp(lm(MeanCSCI ~ MeanLU+SDLU+MeanAltitude+SDAltitude+MeanDist,data=networkAnalysis))
