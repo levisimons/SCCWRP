@@ -65,7 +65,7 @@ GISBioData <- join(GISBioData,FFGCount,by=c("UniqueID","FunctionalFeedingGroup")
 #Merge in the functional feeding group type count back into the data frame.
 GISBioData <- join(GISBioData,FFGTypeCount,by=c("UniqueID"))
 #Find watersheds with a larger enough set of samples for downstream analysis.
-sampleMin <- 15 #Minimum of 25 samples per watershed
+sampleMin <- 15 #Minimum of samples per watershed
 samplingNum <- 10 #Number of samples to select per sampling group within watershed.
 GISBioDataLWS <- subset(GISBioData,NSamples>=sampleMin)
 #Determine land use quantiles
@@ -204,22 +204,43 @@ write.table(networkAnalysis,"CooccurrenceAnalysis.txt",quote=FALSE,sep="\t",row.
 
 ##This part is used to run locally.
 require(relaimpo)
+require(vegan)
 #First simple linear model of network parameters.
 networkAnalysis <- read.table("CooccurrenceAnalysis.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE)
-networkModel <- lm(MeanCSCI ~ N+C+S+M+zeta,data=networkAnalysis)
-#networkModel <- lm(MeanCSCI ~ N+C+M+S+zeta+lambda_1,data=networkAnalysis)
+networkAnalysis <- networkAnalysis[!is.na(networkAnalysis$MeanCSCI),]
+networkAnalysis$CoVLU <- networkAnalysis$SDLU/networkAnalysis$MeanLU
+networkAnalysis$CoVAltitude <-  networkAnalysis$SDAltitude/networkAnalysis$MeanAltitude
+#networkModel <- lm(MeanCSCI ~ N+C+S+M+zeta,data=networkAnalysis)
+networkModel <- lm(MeanCSCI ~ C+M+S+zeta,data=networkAnalysis)
 summary(networkModel)
 anova(networkModel)
+#adonis(MeanCSCI ~ N+C+S+M+zeta,data=networkAnalysis[!is.na(networkAnalysis$MeanCSCI),],strata = networkAnalysis[!is.na(networkAnalysis$MeanCSCI),"Watershed"],permutations=10,method="manhattan")
 calc.relimp(networkModel,type="lmg",rela=FALSE)
 networkAnalysis$ModeledCSCI <- networkModel$coefficients[1]+networkModel$coefficients[2]*networkAnalysis$N+networkModel$coefficients[3]*networkAnalysis$C+networkModel$coefficients[4]*networkAnalysis$S+networkModel$coefficients[5]*networkAnalysis$M+networkModel$coefficients[6]*networkAnalysis$zeta
 printCoefmat(coef(summary(step(networkModel))))
 #networkAnalysis$ModeledCSCI <- networkModel$coefficients[1]+networkModel$coefficients[2]*networkAnalysis$N+networkModel$coefficients[3]*networkAnalysis$C_pos+networkModel$coefficients[4]*networkAnalysis$M_pos+networkModel$coefficients[5]*networkAnalysis$S_pos+networkModel$coefficients[6]*networkAnalysis$zeta_pos
 
+# Assessing R2 shrinkage using 10-Fold Cross-Validation 
+require(bootstrap)
+# define functions 
+theta.fit <- function(x,y){lsfit(x,y)}
+theta.predict <- function(fit,x){cbind(1,x)%*%fit$coef}
+#Run for zero horizon images.
+# matrix of predictors
+#X <- as.matrix(networkAnalysis[,c("N","C","M","S","zeta")])
+X <- as.matrix(networkAnalysis[,c("C","M","S","zeta")])
+# vector of predicted values
+y <- as.matrix(networkAnalysis[,c("MeanCSCI")])
+#Run cross-validation
+results <- crossval(X,y,theta.fit,theta.predict,ngroup=10)
+cor(y, networkModel$fitted.values)**2 # raw R2 
+cor(y,results$cv.fit)**2 # cross-validated R2
+
 #Evaluating the mean and modeled CSCI against environmental parameters.
-calc.relimp(lm(MeanCSCI ~ MeanLU+MeanAltitude+MeanDist,data=networkAnalysis))
-anova(lm(MeanCSCI ~ MeanLU+MeanAltitude+MeanDist,data=networkAnalysis))
-calc.relimp(lm(ModeledCSCI ~ MeanLU+MeanAltitude+MeanDist,data=networkAnalysis))
-anova(lm(ModeledCSCI ~ MeanLU+MeanAltitude+MeanDist,data=networkAnalysis))
+calc.relimp(lm(MeanCSCI ~ MeanLU+SDLU+MeanAltitude+SDAltitude+MeanDist,data=networkAnalysis))
+anova(lm(MeanCSCI ~ MeanLU+SDLU+MeanAltitude+SDAltitude+MeanDist,data=networkAnalysis))
+calc.relimp(lm(ModeledCSCI ~ MeanLU+SDLU+MeanAltitude+SDAltitude+MeanDist,data=networkAnalysis))
+anova(lm(ModeledCSCI ~ MeanLU+SDLU+MeanAltitude+SDAltitude+MeanDist,data=networkAnalysis))
 
 #Investigate trends between number of genera per functional feeding groups per site and other factors.
 FFGTrends <- GISBioDataLWS[,c("UniqueID","Watershed","LU_2000_5K","altitude","FunctionalFeedingGroup","FFGFreq","nTaxa","FFGTypeCount")]
