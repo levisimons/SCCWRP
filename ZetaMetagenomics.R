@@ -7,6 +7,7 @@ require(rgdal)
 require(geosphere)
 require(stringr)
 require(tidyr)
+require(naniar)
 
 #wd <- "/home/cmb-07/sn1/alsimons/SCCWRP"
 wd <- "~/Desktop/SCCWRP/Metagenomics/"
@@ -16,21 +17,29 @@ setwd(wd)
 communityInputRawPlate1 <- read.table("18SV9P1TableWithTaxonomy.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
 communityInputRawPlate2 <- read.table("18SV9P2TableWithTaxonomy.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
 #Remove spaces from column names for the count tables.
-communityInputRawPlate1 <- rename(communityInputRawPlate1, OTUID = `OTU ID`)
-communityInputRawPlate2 <- rename(communityInputRawPlate2, OTUID = `OTU ID`)
+communityInputRawPlate1 <- dplyr::rename(communityInputRawPlate1, OTUID = `OTU ID`)
+communityInputRawPlate2 <- dplyr::rename(communityInputRawPlate2, OTUID = `OTU ID`)
 
 #Get a list of unique OTU names from count tables and convert to a data frame.
 #uniqueOTUs <- as.data.frame(unique(c(communityInputRawPlate1$OTUID,communityInputRawPlate2$OTUID)))
 uniqueOTUs <- rbind(communityInputRawPlate1[,c("OTUID","ConsensusLineage")],communityInputRawPlate2[,c("OTUID","ConsensusLineage")])
 #colnames(uniqueOTUs) <- c("OTUID")
 uniqueOTUs$OTUID <- as.character(uniqueOTUs$OTUID)
+#Remove superfluous strings from taxonomic labels.
+uniqueOTUs$ConsensusLineage <- gsub("D_[0-9]+__","",uniqueOTUs$ConsensusLineage)
 #Split OTU names into Domain through Genus+Species.
 uniqueOTUs <- suppressWarnings(separate(uniqueOTUs,'ConsensusLineage',c("Domain", "Kingdom","Phylum","Class","Order","Family","GenusSpecies"),sep=";", extra="drop"))
 uniqueOTUs$GenusSpecies <- trimws(uniqueOTUs$GenusSpecies,which="left") #Remove starting blank space from genus names
 uniqueOTUs <- suppressWarnings(separate(uniqueOTUs,'GenusSpecies',c("Genus","Species"),sep=" ", extra="warn"))
 uniqueOTUs <- uniqueOTUs[!duplicated(uniqueOTUs$OTUID),]
+#Remove superfluous strings from genus labels.
+uniqueOTUs$Genus <- gsub("g__","",uniqueOTUs$Genus)
 #Filter out ambiguous taxonomies
-uniqueOTUs <- uniqueOTUs[uniqueOTUs$Domain!="Unassigned",]
+uniqueOTUs <- uniqueOTUs[uniqueOTUs$Domain!="Unassigned" & uniqueOTUs$Domain!="Ambiguous_taxa",]
+ambiguousList <- c("Incertae Sedis","metagenome","sp.","environmental","eukaryote","uncultured","soil","Ambiguous_taxa","group","cf.","aff.","gen.","marine","cf","unidentified","Uncultured")
+ambiguousList <- as.list(ambiguousList)
+uniqueOTUs <- data.frame(lapply(uniqueOTUs, trimws), stringsAsFactors = FALSE)
+uniqueOTUs <- replace_with_na_all(data=uniqueOTUs,condition=~.x %in% as.list(ambiguousList))
 
 #Create a merged metagenomic count table.
 communityInput <- left_join(uniqueOTUs,communityInputRawPlate1,by="OTUID")
@@ -47,18 +56,22 @@ taxonomicIgnore <- taxonomicLevels[taxonomicLevels != taxonomicLevel]
 
 #Remove unnecessary sample columns.
 communityInput <- communityInput[, -which(names(communityInput)  %in% taxonomicIgnore)]
-#Remove ambiguous or unassigned taxa for a selected taxonomic level.
 communityInput <- communityInput[!is.na(communityInput[,colnames(communityInput)==taxonomicLevel]),]
-communityInput <- communityInput[!grepl("environmental",communityInput$Species),]
 #Aggregate a taxonomic level to aggregate count data on.
-communityInputSummarized <- aggregate(.~Species,communityInput,sum)
+communityInput[is.na(communityInput)] <- 0
+communityInputSummarized <- aggregate(.~Species,communityInput,sum,na.action = na.omit)
 #Convert abundance to presence/absence.
 rownames(communityInputSummarized) <- Filter(is.character, communityInputSummarized)[,1]
 communityInputSummarized[,which(colnames(communityInputSummarized)==taxonomicLevel)] <- NULL
 communityInputSummarized[is.na(communityInputSummarized)] <- 0
 #Keep only if at least three reads are present.
-communityInputSummarized[communityInputSummarized < 2] <- 0
+communityInputSummarized[communityInputSummarized <= 2] <- 0
 communityInputSummarized[communityInputSummarized > 2] <- 1
+
+#Calculte taxonomic richness by sample.
+communityRichness <- as.data.frame(colSums(communityInputSummarized))
+communityRichness$SampleNum <- as.numeric(rownames(communityRichness))
+colnames(communityRichness) <- c("Richness","SampleNum")
 
 #Read in table linking sample IDs in the metagenomic table to sample station codes.
 sampleIDs <- read.table("SampleStationCodesID.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
@@ -69,7 +82,7 @@ sampleIDs <- sampleIDs[which(sampleIDs$SampleNum!=202 & sampleIDs$SampleNum!=230
 metadata <- read.table("MetagenomicSampleSiteMetadata.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
 
 #Merge in sample IDs to the metadata.
-metadata <- merge(sampleIDs,metadata)
+metadata <- merge(sampleIDs,metadata,by=c("StationCode","Date"))
 
 #Subset metadata by which samples are present in your community data set.
 metadata <- suppressWarnings(metadata[which(metadata$SampleNum %in% as.numeric(colnames(communityInput))),])
@@ -79,6 +92,8 @@ metadata$elev_range <- as.numeric(metadata$elev_range)
 metadata$max_elev <- as.numeric(metadata$max_elev)
 #Create aggregate upstream land use variable.
 metadata$LU <- metadata$Ag_2011_5K+metadata$URBAN_2011_5K+metadata$CODE_21_2011_5K
+#Merge in community richness.
+metadata <- left_join(metadata,communityRichness,by="SampleNum")
 
 #Read in nitrogen and phosporus site data.
 NPdata <- read.table("NandP_labdata.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
@@ -128,7 +143,7 @@ set.seed(1)
 sample_Num <- 10
 zetaMax <- 5
 zetaAnalysis <- data.frame()
-for(j in 1:100){
+for(j in 1:3){
   for(i in unique(km$cluster)){
     tmp <- metadata[metadata$clust==i,]
     #Randomly subsample 10 samples from each cluster by land use grouping.
@@ -161,6 +176,7 @@ for(j in 1:100){
     sdOrthoP <- sd(metadataSubset$MaxOrthoP,na.rm=T)
     meanN <- mean(metadataSubset$MaxN,na.rm=T)
     sdN <- sd(metadataSubset$MaxN,na.rm=T)
+    print(j)
     print(paste(clusterID,meanLU,sdLU,meanAL,sdAL,meanDist,sdDist,numWS,meanP,sdP,meanOrthoP,sdOrthoP,meanN,sdN,zeta_N,zeta_Nsd,zeta_1,zeta_1sd,ExpExp,ExpAIC,PLExp,PLAIC))
     dataRow <- t(as.data.frame(list(c(clusterID,meanLU,sdLU,meanAL,sdAL,meanDist,sdDist,numWS,meanP,sdP,meanOrthoP,sdOrthoP,meanN,sdN,zeta_N,zeta_Nsd,zeta_1,zeta_1sd,ExpExp,ExpAIC,PLExp,PLAIC))))
     rownames(dataRow) <- NULL
@@ -168,28 +184,48 @@ for(j in 1:100){
   }
 }
 colnames(zetaAnalysis) <- c("clusterID","meanLU","sdLU","meanAL","sdAL","meanDist","sdDist","numWS","meanP","sdP","meanOrthoP","sdOrthoP","meanN","sdN","zeta_N","zeta_Nsd","zeta_1","zeta_1sd","ExpExp","ExpAIC","PLExp","PLAIC")
-zetaAnalysis$zeta_Nscaled <- zetaAnalysis$zeta_N/zetaAnalysis$zeta_1
+#zetaAnalysis$zeta_Nscaled <- zetaAnalysis$zeta_N/zetaAnalysis$zeta_1
 #Save zeta diversity analysis for a given taxonomic level.
 write.table(zetaAnalysis,paste("zetaAnalysis18SV9",taxonomicLevel,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
 #
+
+##To run locally.
 zetaAnalysis <- read.table("zetaAnalysis18SV9Species.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
 
 require(ggplot2)
 require(viridis)
 zetaPlot <- ggplot(zetaAnalysis, aes(x=meanLU,y=zeta_Nscaled,color=meanN))+geom_point()+theme(text = element_text(size=25))+geom_smooth(method=glm, aes(fill=zeta_Nscaled))
 zetaPlot+xlab("Mean LU")+ylab("Zeta_5")+scale_color_gradientn("Mean N",colours = rev(plasma(10)))
-zetaPlot <- ggplot(zetaAnalysis, aes(x=meanLU,y=zeta_Nscaled,color=numWS))+geom_point()+theme(text = element_text(size=25))+geom_smooth(method=glm, aes(fill=zeta_Nscaled))
-zetaPlot+xlab("Mean LU")+ylab("Zeta_5")+scale_color_gradientn("Num WS",colours = rev(plasma(10)))
-zetaPlot <- ggplot(zetaAnalysis, aes(x=meanDist,y=zeta_Nscaled,color=meanAL))+geom_point()+theme(text = element_text(size=25))+geom_smooth(method=glm, aes(fill=zeta_Nscaled))
-zetaPlot+xlab("Mean Dist")+ylab("Zeta_5")+scale_color_gradientn("Mean AL",colours = rev(plasma(10)))
+zetaPlot <- ggplot(zetaAnalysis, aes(x=meanLU,y=zeta_Nscaled,color=meanAL))+geom_point()+theme(text = element_text(size=25))+geom_smooth(method=glm, aes(fill=zeta_Nscaled))
+zetaPlot+xlab("Mean LU")+ylab("Zeta_5")+scale_color_gradientn("Mean Al",colours = rev(plasma(10)))
+zetaPlot <- ggplot(zetaAnalysis, aes(x=meanLU,y=PLExp,color=meanN))+geom_point()+theme(text = element_text(size=25))+geom_smooth(method=glm, aes(fill=zeta_Nscaled))
+zetaPlot+xlab("Mean LU")+ylab("Zeta_1")+scale_color_gradientn("Mean N",colours = rev(plasma(10)))
 
 
 #Calculate how much zeta diversity of a particular order decays with distance
-zetaDistance <- Zeta.ddecay(xy=metadata[,c("Latitude","Longitude")],data.spec=data.spec,order=5,distance.type="ortho",normalize=TRUE,plot=FALSE)
+data.spec <- communityInputSummarized[,as.character(metadata$SampleNum)]
+#Create a species/site matrix for use in the zeta diversity functions.
+data.spec <- as.data.frame(t(data.spec))
+zetaDistance <- Zeta.ddecay(xy=metadata[,c("Latitude","Longitude")],data.spec=data.spec,order=5,distance.type="ortho",normalize="Jaccard",plot=FALSE)
 #How strongly correlated is zeta diversity with geographic distance?
 cor.test(zetaDistance$zeta.val,zetaDistance$distance,method="spearman")
-#
 
+#Zeta.varpart returns a data frame with one column containing the variation explained by each component 
+#a (the variation explained by distance alone),
+#b (the variation explained by either distance or the environment),
+#c (the variation explained by the environment alone) and 
+#d (the unexplained variation).
+data.env <- metadata[,c("LU","MaxN","MaxOrthoP","MaxP","elev_range","max_elev")]
+rownames(data.env) <- metadata[,c("SampleNum")]
+data.env <- na.omit(data.env)
+data.xy <- metadata[,c("Longitude","Latitude")]
+rownames(data.xy) <- metadata[,c("SampleNum")]
+data.xy <- data.xy[which(rownames(data.xy) %in% rownames(data.env)),]
+tmp <- data.spec[which(rownames(data.spec) %in% rownames(data.xy)),]
+zetaFactors <- Zeta.msgdm(data.spec=tmp,data.env=data.env,xy=data.xy,order=5,reg.type="glm",distance.type="ortho",normalize=FALSE,rescale=FALSE,control=list(maxit=100))
+zetaVar <- Zeta.varpart(zetaFactors)
+
+#Mapping metadata
 require(ggplot2)
 require(ggmap)
 require(maps)
@@ -207,8 +243,3 @@ ColorScale <- colorNumeric(palette=plasma(10),domain=metadata$clust)
 CalMap %>% addCircleMarkers(color = ~ColorScale(clust), fill = TRUE,radius=0.1,fillOpacity = 1) %>% 
   addProviderTiles(providers$Esri.WorldTopoMap) %>%
   addLegend("topright", pal=ColorScale,values=~clust,title="SCCWRP sample<br>site clusters")
-
-
-data.xy <- metadata[,c("Longitude","Latitude")]
-data.env <- metadata[,c("LU","MaxN","MaxOrthoP","MaxP","elev_range","max_elev")]
-zetaFactors <- Zeta.msgdm(data.spec=data.spec,data.env=data.env,xy=data.xy,order=4,sam=300,reg.type="glm",distance.type="ortho",normalize=FALSE,rescale=FALSE,control=list(maxit=100))
