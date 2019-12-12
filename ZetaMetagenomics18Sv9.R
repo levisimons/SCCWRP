@@ -8,10 +8,67 @@ require(geosphere)
 require(stringr)
 require(tidyr)
 require(naniar)
+require(taxize)
 
 #wd <- "/home/cmb-07/sn1/alsimons/SCCWRP"
 wd <- "~/Desktop/SCCWRP/Metagenomics/"
 setwd(wd)
+
+writeControl <- "NO"
+#Choose a community type.
+#"" for all data.
+#"algae" for algal communities.
+#"BMIs" for BMI communities
+communityType <- "algae"
+
+if(writeControl=="YES"){
+  ##Only run this once to generate full taxonomy files for algal and BMI samples.
+  #Read in SCCWRP BMI taxonomic family-level ids in order to subset read data and focus analyses on just BMIs.
+  BMIList <- read.table("bug_STE.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8",na.strings=c("","NA"))
+  BMIList <- unique(BMIList$FamilyNames)
+  BMIList <- na.omit(BMIList)
+  BMITaxonomies <- data.frame()
+  for(name in BMIList){
+    tmp <- classification(name,db="ncbi")
+    Sys.sleep(0.5)
+    if(nrow(as.data.frame(tmp[1]))>1){
+      tmp <- as.data.frame(tmp[1])
+      colnames(tmp) <- c("taxa","rank","id")
+      tmp <- tmp[tmp$rank!="no rank",]
+      if(nrow(tmp)>1){
+        tmp <- as.data.frame(t(tmp[,c("taxa","rank")]))
+        colnames(tmp) <- as.character(unlist(tmp["rank",]))
+        tmp <- tmp[!row.names(tmp) %in% c("rank"),]
+        rownames(tmp) <- name
+        BMITaxonomies <- dplyr::bind_rows(BMITaxonomies,tmp) 
+      }
+    }
+  }
+  write.table(BMITaxonomies,"BMITaxonomies.txt",quote=FALSE,sep="\t",row.names = FALSE)
+  #Read in SCCWRP algal taxonomic phyla-level ids in order to subset read data and focus analyses on just algae.
+  AlgaeList <- read.table("algae_STE.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8",na.strings=c("","NA"))
+  AlgaeList <- unique(AlgaeList$Phylum)
+  AlgaeList <- na.omit(AlgaeList)
+  AlgalTaxonomies <- data.frame()
+  for(name in AlgaeList){
+    tmp <- classification(name,db="ncbi")
+    Sys.sleep(0.5)
+    if(nrow(as.data.frame(tmp[1]))>1){
+      tmp <- as.data.frame(tmp[1])
+      colnames(tmp) <- c("taxa","rank","id")
+      tmp <- tmp[tmp$rank!="no rank",]
+      if(nrow(tmp)>1){
+        tmp <- as.data.frame(t(tmp[,c("taxa","rank")]))
+        colnames(tmp) <- as.character(unlist(tmp["rank",]))
+        tmp <- tmp[!row.names(tmp) %in% c("rank"),]
+        rownames(tmp) <- name
+        AlgalTaxonomies <- dplyr::bind_rows(AlgalTaxonomies,tmp) 
+      }
+    }
+  }
+  write.table(AlgalTaxonomies,"AlgalTaxonomies.txt",quote=FALSE,sep="\t",row.names = FALSE)
+  ##
+}
 
 #Read in metagenomic count tables and format them as presence/absence tables.
 communityInputRawPlate1 <- read.table("18SV9P1TableWithTaxonomy.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
@@ -27,13 +84,13 @@ uniqueOTUs <- rbind(communityInputRawPlate1[,c("OTUID","ConsensusLineage")],comm
 uniqueOTUs$OTUID <- as.character(uniqueOTUs$OTUID)
 #Remove superfluous strings from taxonomic labels.
 uniqueOTUs$ConsensusLineage <- gsub("D_[0-9]+__","",uniqueOTUs$ConsensusLineage)
+uniqueOTUs$ConsensusLineage <- gsub("g__","",uniqueOTUs$ConsensusLineage)
 #Split OTU names into Domain through Genus+Species.
+uniqueOTUs$FullTaxonomy <- uniqueOTUs$ConsensusLineage
 uniqueOTUs <- suppressWarnings(separate(uniqueOTUs,'ConsensusLineage',c("Domain", "Kingdom","Phylum","Class","Order","Family","GenusSpecies"),sep=";", extra="drop"))
 uniqueOTUs$GenusSpecies <- trimws(uniqueOTUs$GenusSpecies,which="left") #Remove starting blank space from genus names
 uniqueOTUs <- suppressWarnings(separate(uniqueOTUs,'GenusSpecies',c("Genus","Species"),sep=" ", extra="warn"))
 uniqueOTUs <- uniqueOTUs[!duplicated(uniqueOTUs$OTUID),]
-#Remove superfluous strings from genus labels.
-uniqueOTUs$Genus <- gsub("g__","",uniqueOTUs$Genus)
 #Filter out ambiguous taxonomies
 uniqueOTUs <- uniqueOTUs[uniqueOTUs$Domain!="Unassigned" & uniqueOTUs$Domain!="Ambiguous_taxa",]
 ambiguousList <- c("Incertae Sedis","metagenome","sp.","environmental","eukaryote","uncultured","soil","Ambiguous_taxa","group","cf.","aff.","gen.","marine","cf","unidentified","Uncultured")
@@ -41,17 +98,39 @@ ambiguousList <- as.list(ambiguousList)
 uniqueOTUs <- data.frame(lapply(uniqueOTUs, trimws), stringsAsFactors = FALSE)
 uniqueOTUs <- replace_with_na_all(data=uniqueOTUs,condition=~.x %in% as.list(ambiguousList))
 
-#Create a merged metagenomic count table.
-communityInput <- left_join(uniqueOTUs,communityInputRawPlate1,by="OTUID")
-communityInput <- left_join(communityInput,communityInputRawPlate2,by="OTUID")
+#Subset 18Sv9 OTU table to only contain taxonomic BMI data from SCCWRP
+BMITaxonomies <- read.table("BMITaxonomies.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
+BMITaxonomies <- BMITaxonomies[,!colnames(BMITaxonomies) %in% c("superkingdom","kingdom")]
+BMITaxonomies <- na.omit(unique(unlist(BMITaxonomies)))
+animalOTUs <- uniqueOTUs[uniqueOTUs$Class=="Metazoa (Animalia)",]
+uniqueBMIs <- animalOTUs[grep(paste(BMITaxonomies,collapse="|"),animalOTUs$FullTaxonomy),]
 
+#Subset 18Sv9 OTU table to only contain taxonomic algal data from SCCWRP
+AlgalTaxonomies <- read.table("AlgalTaxonomies.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
+AlgalTaxonomies <- AlgalTaxonomies[AlgalTaxonomies$superkingdom=="Eukaryota",]
+AlgalTaxonomies <- AlgalTaxonomies[,!colnames(AlgalTaxonomies) %in% c("superkingdom")]
+AlgalTaxonomies <- na.omit(unique(unlist(AlgalTaxonomies)))
+plantOTUs <- uniqueOTUs[uniqueOTUs$Kingdom %in% c("Archaeplastida","Cryptophyceae","Haptophyta"),]
+uniqueAlgae <- plantOTUs[grep(paste(AlgalTaxonomies,collapse="|"),plantOTUs$FullTaxonomy),]
+
+#Create a merged metagenomic count table.
+if(communityType==""){
+  communityInput <- left_join(uniqueOTUs,communityInputRawPlate1,by="OTUID")
+}
+if(communityType=="algae"){
+  communityInput <- left_join(uniqueAlgae,communityInputRawPlate1,by="OTUID")
+}
+if(communityType=="BMIs"){
+  communityInput <- left_join(uniqueBMIs,communityInputRawPlate1,by="OTUID")
+}
+communityInput <- left_join(communityInput,communityInputRawPlate2,by="OTUID")
 #Remove unnecessary sample columns.
-communityInput <- communityInput[, -which(names(communityInput)  %in% c("DNAStandard","Ext-Blank1","Ext-Blank2","FB","NTC","SNAStandardII","ConsensusLineage.y","DNAstandardI","DNAstandardII","ConsensusLineage.x","202","230.x","230.y"))]
+communityInput <- communityInput[, -which(names(communityInput)  %in% c("DNAStandard","Ext-Blank1","Ext-Blank2","FB","NTC","SNAStandardII","ConsensusLineage.y","DNAstandardI","DNAstandardII","ConsensusLineage.x","202","230.x","230.y","FullTaxonomy"))]
 
 #Choose a taxonomic level to group count data by.
 #Levels are Domain, Kingdom, Phylum, Class, Order, Family, GenusSpecies, OTUID
 taxonomicLevels <- c("Domain", "Kingdom", "Phylum", "Class", "Order", "Family", "Genus","Species", "OTUID")
-taxonomicLevel <- c("Species") #Choose a taxonomic level to aggregate count data on.
+taxonomicLevel <- c("OTUID") #Choose a taxonomic level to aggregate count data on.
 taxonomicIgnore <- taxonomicLevels[taxonomicLevels != taxonomicLevel]
 
 #Remove unnecessary sample columns.
@@ -59,7 +138,12 @@ communityInput <- communityInput[, -which(names(communityInput)  %in% taxonomicI
 communityInput <- communityInput[!is.na(communityInput[,colnames(communityInput)==taxonomicLevel]),]
 #Aggregate a taxonomic level to aggregate count data on.
 communityInput[is.na(communityInput)] <- 0
-communityInputSummarized <- aggregate(.~Species,communityInput,sum,na.action = na.omit)
+if(taxonomicLevel=="OTUID"){
+  communityInputSummarized <- as.data.frame(communityInput)
+}
+if(taxonomicLevel!="OTUID"){
+  communityInputSummarized <- as.data.frame(aggregate(.~Species,communityInput,sum,na.action = na.omit))
+}
 #Convert abundance to presence/absence.
 rownames(communityInputSummarized) <- Filter(is.character, communityInputSummarized)[,1]
 communityInputSummarized[,which(colnames(communityInputSummarized)==taxonomicLevel)] <- NULL
@@ -105,47 +189,36 @@ NPdata[NPdata<0] <- NA
 metadata <- left_join(metadata,NPdata,by=c("StationCode"))
 
 #Read in watershed by sample site location data.
-SCCWRP <- read.table("MetagenomicSitesWithWatersheds.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
-SCCWRP <- SCCWRP[,c("Latitude","Longitude","HUC8")]
+SCCWRP <- read.table("MetagenomicSitesWithWatershedsEcoregions.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
+SCCWRP <- SCCWRP[,c("Latitude","Longitude","HUC8","PSA6","PSA8")]
 #Remove duplicate rows
 SCCWRP <- SCCWRP[!duplicated(SCCWRP),]
 #Create HUC 6 watershed column.
 SCCWRP$HUC6 <- substr(SCCWRP$HUC8,1,nchar(SCCWRP$HUC8)-2)
 #Create HUC 4 watershed column.
 SCCWRP$HUC4 <- substr(SCCWRP$HUC8,1,nchar(SCCWRP$HUC8)-4)
+#Create PSA4 level ecoregion
+SCCWRP$PSA4 <- SCCWRP$PSA6
+SCCWRP$PSA4 <- gsub("Deserts Modoc","HighInterior",SCCWRP$PSA4)
+SCCWRP$PSA4 <- gsub("Sierra Nevada","HighInterior",SCCWRP$PSA4)
+SCCWRP$PSA4 <- gsub("Central Valley","CentralCalifornia",SCCWRP$PSA4)
+SCCWRP$PSA4 <- gsub("Chaparral","CentralCalifornia",SCCWRP$PSA4)
+SCCWRP$Ecoregion <- as.factor(SCCWRP$PSA4)
+levels(SCCWRP$Ecoregion) <- 1:length(unique(SCCWRP$Ecoregion))
 
 #Merge in watershed data into metadata
 metadata <- left_join(metadata,SCCWRP,by=c("Latitude","Longitude"))
 metadata <- metadata[!is.na(metadata$Latitude),]
 metadata <- metadata[!is.na(metadata$Longitude),]
 
-#Assign a geographic cluster to sample sites in the metadata.
-#Minimize the difference in group sizes during clustering.
-mdist <- distm(metadata[,c("Longitude","Latitude")])
-x <- 1
-#Optimize the equality between cluster group sizes.
-xlist <- c()
-for(i in 1:1000){
-  km <- kmeans(mdist,centers=4)
-  xlist <- c(xlist,sd(table(km$cluster))/mean(table(km$cluster)))
-  print(min(xlist))
-  print(table(km$cluster))
-}
-while(x > min(xlist)){
-  km <- kmeans(mdist,centers=4)
-  x <- sd(table(km$cluster))/mean(table(km$cluster))
-  print(x)
-  print(table(km$cluster))
-}
-metadata$clust <- km$cluster
-
 set.seed(1)
 sample_Num <- 10
 zetaMax <- 5
 zetaAnalysis <- data.frame()
-for(j in 1:3){
-  for(i in unique(km$cluster)){
-    tmp <- metadata[metadata$clust==i,]
+for(j in 1:100){
+  for(i in unique(metadata$Ecoregion)){
+    #Subset by ecoregion.
+    tmp <- metadata[metadata$Ecoregion==i,]
     #Randomly subsample 10 samples from each cluster by land use grouping.
     metadataSubset <- tmp[sample(nrow(tmp),sample_Num),]
     #Reorder community data set columns so that their sample number order increases from left to right.
@@ -162,7 +235,7 @@ for(j in 1:3){
     ExpAIC <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
     PLExp <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
     PLAIC <- zetaDecay$aic$AIC[2] #AIC coefficient Zeta diversity power law decay.
-    clusterID <- i
+    Ecoregion <- i
     meanLU <- mean(metadataSubset$LU)
     sdLU <- sd(metadataSubset$LU)
     meanAL <- mean(metadataSubset$site_elev)
@@ -177,20 +250,22 @@ for(j in 1:3){
     meanN <- mean(metadataSubset$MaxN,na.rm=T)
     sdN <- sd(metadataSubset$MaxN,na.rm=T)
     print(j)
-    print(paste(clusterID,meanLU,sdLU,meanAL,sdAL,meanDist,sdDist,numWS,meanP,sdP,meanOrthoP,sdOrthoP,meanN,sdN,zeta_N,zeta_Nsd,zeta_1,zeta_1sd,ExpExp,ExpAIC,PLExp,PLAIC))
-    dataRow <- t(as.data.frame(list(c(clusterID,meanLU,sdLU,meanAL,sdAL,meanDist,sdDist,numWS,meanP,sdP,meanOrthoP,sdOrthoP,meanN,sdN,zeta_N,zeta_Nsd,zeta_1,zeta_1sd,ExpExp,ExpAIC,PLExp,PLAIC))))
+    print(paste(Ecoregion,meanLU,sdLU,meanAL,sdAL,meanDist,sdDist,numWS,meanP,sdP,meanOrthoP,sdOrthoP,meanN,sdN,zeta_N,zeta_Nsd,zeta_1,zeta_1sd,ExpExp,ExpAIC,PLExp,PLAIC))
+    dataRow <- t(as.data.frame(list(c(Ecoregion,meanLU,sdLU,meanAL,sdAL,meanDist,sdDist,numWS,meanP,sdP,meanOrthoP,sdOrthoP,meanN,sdN,zeta_N,zeta_Nsd,zeta_1,zeta_1sd,ExpExp,ExpAIC,PLExp,PLAIC))))
     rownames(dataRow) <- NULL
     zetaAnalysis <- rbind(zetaAnalysis,dataRow)
   }
 }
-colnames(zetaAnalysis) <- c("clusterID","meanLU","sdLU","meanAL","sdAL","meanDist","sdDist","numWS","meanP","sdP","meanOrthoP","sdOrthoP","meanN","sdN","zeta_N","zeta_Nsd","zeta_1","zeta_1sd","ExpExp","ExpAIC","PLExp","PLAIC")
-#zetaAnalysis$zeta_Nscaled <- zetaAnalysis$zeta_N/zetaAnalysis$zeta_1
+colnames(zetaAnalysis) <- c("Ecoregion","meanLU","sdLU","meanAL","sdAL","meanDist","sdDist","numWS","meanP","sdP","meanOrthoP","sdOrthoP","meanN","sdN","zeta_N","zeta_Nsd","zeta_1","zeta_1sd","ExpExp","ExpAIC","PLExp","PLAIC")
+indx <- sapply(zetaAnalysis, is.factor)
+zetaAnalysis[indx] <- lapply(zetaAnalysis[indx], function(x) as.numeric(as.character(x)))
+zetaAnalysis$zeta_Nscaled <- zetaAnalysis$zeta_N/zetaAnalysis$zeta_1
 #Save zeta diversity analysis for a given taxonomic level.
-write.table(zetaAnalysis,paste("zetaAnalysis18SV9",taxonomicLevel,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
+write.table(zetaAnalysis,paste("zetaAnalysis18SV9",communityType,taxonomicLevel,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
 #
 
 ##To run locally.
-zetaAnalysis <- read.table("zetaAnalysis18SV9Species.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
+zetaAnalysis <- read.table(paste("zetaAnalysis18SV9",communityType,taxonomicLevel,".txt",sep=""), header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
 
 require(ggplot2)
 require(viridis)
@@ -201,6 +276,9 @@ zetaPlot+xlab("Mean LU")+ylab("Zeta_5")+scale_color_gradientn("Mean Al",colours 
 zetaPlot <- ggplot(zetaAnalysis, aes(x=meanLU,y=PLExp,color=meanN))+geom_point()+theme(text = element_text(size=25))+geom_smooth(method=glm, aes(fill=zeta_Nscaled))
 zetaPlot+xlab("Mean LU")+ylab("Zeta_1")+scale_color_gradientn("Mean N",colours = rev(plasma(10)))
 
+#Check for correlation patterns between zeta diversity and environmental parameters.
+require("PerformanceAnalytics")
+chart.Correlation(zetaAnalysis[,c("zeta_Nscaled","meanLU","meanAL","meanN","meanP","meanOrthoP")], histogram=TRUE, method="spearman")
 
 #Calculate how much zeta diversity of a particular order decays with distance
 data.spec <- communityInputSummarized[,as.character(metadata$SampleNum)]
@@ -209,6 +287,12 @@ data.spec <- as.data.frame(t(data.spec))
 zetaDistance <- Zeta.ddecay(xy=metadata[,c("Latitude","Longitude")],data.spec=data.spec,order=5,distance.type="ortho",normalize="Jaccard",plot=FALSE)
 #How strongly correlated is zeta diversity with geographic distance?
 cor.test(zetaDistance$zeta.val,zetaDistance$distance,method="spearman")
+
+#Compare community assembly profiles.
+require(IDPmisc)
+mean(NaRV.omit(zetaAnalysis$PLAIC))
+mean(NaRV.omit(zetaAnalysis$ExpAIC))
+t.test(NaRV.omit(zetaAnalysis$PLAIC),NaRV.omit(zetaAnalysis$ExpAIC),alternative="two.sided")
 
 #Zeta.varpart returns a data frame with one column containing the variation explained by each component 
 #a (the variation explained by distance alone),
