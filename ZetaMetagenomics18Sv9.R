@@ -10,65 +10,15 @@ require(tidyr)
 require(naniar)
 require(taxize)
 
-#wd <- "/home/cmb-07/sn1/alsimons/SCCWRP"
-wd <- "~/Desktop/SCCWRP/Metagenomics/"
+wd <- "/home/cmb-07/sn1/alsimons/SCCWRP"
+#wd <- "~/Desktop/SCCWRP/Metagenomics/"
 setwd(wd)
 
-writeControl <- "NO"
 #Choose a community type.
 #"" for all data.
 #"algae" for algal communities.
 #"BMIs" for BMI communities
-communityType <- "algae"
-
-if(writeControl=="YES"){
-  ##Only run this once to generate full taxonomy files for algal and BMI samples.
-  #Read in SCCWRP BMI taxonomic family-level ids in order to subset read data and focus analyses on just BMIs.
-  BMIList <- read.table("bug_STE.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8",na.strings=c("","NA"))
-  BMIList <- unique(BMIList$FamilyNames)
-  BMIList <- na.omit(BMIList)
-  BMITaxonomies <- data.frame()
-  for(name in BMIList){
-    tmp <- classification(name,db="ncbi")
-    Sys.sleep(0.5)
-    if(nrow(as.data.frame(tmp[1]))>1){
-      tmp <- as.data.frame(tmp[1])
-      colnames(tmp) <- c("taxa","rank","id")
-      tmp <- tmp[tmp$rank!="no rank",]
-      if(nrow(tmp)>1){
-        tmp <- as.data.frame(t(tmp[,c("taxa","rank")]))
-        colnames(tmp) <- as.character(unlist(tmp["rank",]))
-        tmp <- tmp[!row.names(tmp) %in% c("rank"),]
-        rownames(tmp) <- name
-        BMITaxonomies <- dplyr::bind_rows(BMITaxonomies,tmp) 
-      }
-    }
-  }
-  write.table(BMITaxonomies,"BMITaxonomies.txt",quote=FALSE,sep="\t",row.names = FALSE)
-  #Read in SCCWRP algal taxonomic phyla-level ids in order to subset read data and focus analyses on just algae.
-  AlgaeList <- read.table("algae_STE.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8",na.strings=c("","NA"))
-  AlgaeList <- unique(AlgaeList$Phylum)
-  AlgaeList <- na.omit(AlgaeList)
-  AlgalTaxonomies <- data.frame()
-  for(name in AlgaeList){
-    tmp <- classification(name,db="ncbi")
-    Sys.sleep(0.5)
-    if(nrow(as.data.frame(tmp[1]))>1){
-      tmp <- as.data.frame(tmp[1])
-      colnames(tmp) <- c("taxa","rank","id")
-      tmp <- tmp[tmp$rank!="no rank",]
-      if(nrow(tmp)>1){
-        tmp <- as.data.frame(t(tmp[,c("taxa","rank")]))
-        colnames(tmp) <- as.character(unlist(tmp["rank",]))
-        tmp <- tmp[!row.names(tmp) %in% c("rank"),]
-        rownames(tmp) <- name
-        AlgalTaxonomies <- dplyr::bind_rows(AlgalTaxonomies,tmp) 
-      }
-    }
-  }
-  write.table(AlgalTaxonomies,"AlgalTaxonomies.txt",quote=FALSE,sep="\t",row.names = FALSE)
-  ##
-}
+communityType <- "BMIs"
 
 #Read in metagenomic count tables and format them as presence/absence tables.
 communityInputRawPlate1 <- read.table("18SV9P1TableWithTaxonomy.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
@@ -87,31 +37,24 @@ uniqueOTUs$ConsensusLineage <- gsub("D_[0-9]+__","",uniqueOTUs$ConsensusLineage)
 uniqueOTUs$ConsensusLineage <- gsub("g__","",uniqueOTUs$ConsensusLineage)
 #Split OTU names into Domain through Genus+Species.
 uniqueOTUs$FullTaxonomy <- uniqueOTUs$ConsensusLineage
-uniqueOTUs <- suppressWarnings(separate(uniqueOTUs,'ConsensusLineage',c("Domain", "Kingdom","Phylum","Class","Order","Family","GenusSpecies"),sep=";", extra="drop"))
-uniqueOTUs$GenusSpecies <- trimws(uniqueOTUs$GenusSpecies,which="left") #Remove starting blank space from genus names
-uniqueOTUs <- suppressWarnings(separate(uniqueOTUs,'GenusSpecies',c("Genus","Species"),sep=" ", extra="warn"))
+uniqueOTUs <- suppressWarnings(separate(uniqueOTUs,'ConsensusLineage',c("Rank1", "Rank2","Rank3","Rank4","Rank5","Rank6","Rank7and8"),sep=";", extra="drop"))
+uniqueOTUs$Rank7and8 <- trimws(uniqueOTUs$Rank7and8,which="left") #Remove starting blank space from genus names
+uniqueOTUs <- suppressWarnings(separate(uniqueOTUs,'Rank7and8',c("Rank7","Rank8"),sep=" ", extra="warn"))
 uniqueOTUs <- uniqueOTUs[!duplicated(uniqueOTUs$OTUID),]
 #Filter out ambiguous taxonomies
-uniqueOTUs <- uniqueOTUs[uniqueOTUs$Domain!="Unassigned" & uniqueOTUs$Domain!="Ambiguous_taxa",]
-ambiguousList <- c("Incertae Sedis","metagenome","sp.","environmental","eukaryote","uncultured","soil","Ambiguous_taxa","group","cf.","aff.","gen.","marine","cf","unidentified","Uncultured")
+uniqueOTUs <- uniqueOTUs[uniqueOTUs$Rank1!="Unassigned" & uniqueOTUs$Rank1!="Ambiguous_taxa",]
+ambiguousList <- c("Incertae Sedis","metagenome","sp.","environmental","eukaryote","uncultured","soil","Ambiguous_taxa","group","cf.","aff.","gen.","marine","cf","unidentified","Uncultured","invertebrate")
 ambiguousList <- as.list(ambiguousList)
 uniqueOTUs <- data.frame(lapply(uniqueOTUs, trimws), stringsAsFactors = FALSE)
 uniqueOTUs <- replace_with_na_all(data=uniqueOTUs,condition=~.x %in% as.list(ambiguousList))
 
 #Subset 18Sv9 OTU table to only contain taxonomic BMI data from SCCWRP
-BMITaxonomies <- read.table("BMITaxonomies.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
-BMITaxonomies <- BMITaxonomies[,!colnames(BMITaxonomies) %in% c("superkingdom","kingdom")]
-BMITaxonomies <- na.omit(unique(unlist(BMITaxonomies)))
-animalOTUs <- uniqueOTUs[uniqueOTUs$Class=="Metazoa (Animalia)",]
-uniqueBMIs <- animalOTUs[grep(paste(BMITaxonomies,collapse="|"),animalOTUs$FullTaxonomy),]
+#Generated here: https://github.com/levisimons/SCCWRP/blob/master/SCCWRPTaxonomyGenerator.R
+uniqueBMIs <- read.table("BMITaxonomies.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
 
 #Subset 18Sv9 OTU table to only contain taxonomic algal data from SCCWRP
-AlgalTaxonomies <- read.table("AlgalTaxonomies.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
-AlgalTaxonomies <- AlgalTaxonomies[AlgalTaxonomies$superkingdom=="Eukaryota",]
-AlgalTaxonomies <- AlgalTaxonomies[,!colnames(AlgalTaxonomies) %in% c("superkingdom")]
-AlgalTaxonomies <- na.omit(unique(unlist(AlgalTaxonomies)))
-plantOTUs <- uniqueOTUs[uniqueOTUs$Kingdom %in% c("Archaeplastida","Cryptophyceae","Haptophyta"),]
-uniqueAlgae <- plantOTUs[grep(paste(AlgalTaxonomies,collapse="|"),plantOTUs$FullTaxonomy),]
+#Generated here: https://github.com/levisimons/SCCWRP/blob/master/SCCWRPTaxonomyGenerator.R
+uniqueAlgae <- read.table("AlgaeTaxonomies.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
 
 #Create a merged metagenomic count table.
 if(communityType==""){
@@ -129,7 +72,7 @@ communityInput <- communityInput[, -which(names(communityInput)  %in% c("DNAStan
 
 #Choose a taxonomic level to group count data by.
 #Levels are Domain, Kingdom, Phylum, Class, Order, Family, GenusSpecies, OTUID
-taxonomicLevels <- c("Domain", "Kingdom", "Phylum", "Class", "Order", "Family", "Genus","Species", "OTUID")
+taxonomicLevels <- c("kingdom", "phylum", "class", "order", "family", "genus","species", "OTUID")
 taxonomicLevel <- c("OTUID") #Choose a taxonomic level to aggregate count data on.
 taxonomicIgnore <- taxonomicLevels[taxonomicLevels != taxonomicLevel]
 
@@ -142,7 +85,7 @@ if(taxonomicLevel=="OTUID"){
   communityInputSummarized <- as.data.frame(communityInput)
 }
 if(taxonomicLevel!="OTUID"){
-  communityInputSummarized <- as.data.frame(aggregate(.~Species,communityInput,sum,na.action = na.omit))
+  communityInputSummarized <- as.data.frame(aggregate(formula(paste0(". ~ ",taxonomicLevel)),communityInput,sum,na.action = na.omit))
 }
 #Convert abundance to presence/absence.
 rownames(communityInputSummarized) <- Filter(is.character, communityInputSummarized)[,1]
@@ -321,9 +264,10 @@ require(devtools)
 require(webshot)
 require(viridis)
 #Map data.
+metadata$Ecoregion <- as.numeric(metadata$Ecoregion)
 CalMap = leaflet(metadata) %>% 
   addTiles()
-ColorScale <- colorNumeric(palette=plasma(10),domain=metadata$clust)
-CalMap %>% addCircleMarkers(color = ~ColorScale(clust), fill = TRUE,radius=0.1,fillOpacity = 1) %>% 
+ColorScale <- colorNumeric(palette=plasma(10),domain=metadata$Ecoregion)
+CalMap %>% addCircleMarkers(color = ~ColorScale(Ecoregion), fill = TRUE,radius=0.1,fillOpacity = 1) %>% 
   addProviderTiles(providers$Esri.WorldTopoMap) %>%
-  addLegend("topright", pal=ColorScale,values=~clust,title="SCCWRP sample<br>site clusters")
+  addLegend("topright", pal=ColorScale,values=~Ecoregion,title="SCCWRP sample<br>site ecoregions")
