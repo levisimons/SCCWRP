@@ -144,10 +144,10 @@ for(j in 1:nrow(uniqueAlgae)){
       colnames(tmp) <- as.character(unlist(tmp["rank",]))
       tmp <- tmp[!row.names(tmp) %in% c("rank"),]
       rownames(tmp) <- name
-      tmp <- cbind(uniqueBMIs[j,],tmp)
+      tmp <- cbind(uniqueAlgae[j,],tmp)
       AlgaeTaxonomies <- dplyr::bind_rows(AlgaeTaxonomies,tmp)
       i=i+1
-      print(paste("BMIs",i,length(AlgaeList)))
+      print(paste("Algae",i,length(AlgaeList)))
     }
   }
 }
