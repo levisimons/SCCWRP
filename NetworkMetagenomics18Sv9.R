@@ -21,7 +21,7 @@ setwd(wd)
 #"" for all data.
 #"algae" for algal communities.
 #"BMIs" for BMI communities
-communityType <- "BMIs"
+communityType <- "algae"
 
 #Read in metagenomic count tables and format them as presence/absence tables.
 communityInputRawPlate1 <- read.table("18SV9P1TableWithTaxonomy.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
@@ -76,7 +76,7 @@ communityInput <- communityInput[, -which(names(communityInput)  %in% c("DNAStan
 #Choose a taxonomic level to group count data by.
 #Levels are Domain, Kingdom, Phylum, Class, Order, Family, GenusSpecies, OTUID
 taxonomicLevels <- c("kingdom", "phylum", "class", "order", "family", "genus","species", "OTUID")
-taxonomicLevel <- c("species") #Choose a taxonomic level to aggregate count data on.
+taxonomicLevel <- c("family") #Choose a taxonomic level to aggregate count data on.
 taxonomicIgnore <- taxonomicLevels[taxonomicLevels != taxonomicLevel]
 
 #Remove unnecessary sample columns.
@@ -261,3 +261,73 @@ networkAnalysis[,1:ncol(networkAnalysis)] <- sapply(networkAnalysis[,1:ncol(netw
 networkAnalysis[,2:ncol(networkAnalysis)] <- sapply(networkAnalysis[,2:ncol(networkAnalysis)],as.numeric)
 rownames(networkAnalysis) <- 1:nrow(networkAnalysis)
 write.table(networkAnalysis,paste("networkAnalysis18SV9",communityType,taxonomicLevel,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
+
+##To run locally.
+networkAnalysis <- read.table(paste("networkAnalysis18SV9",communityType,taxonomicLevel,".txt",sep=""), header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
+#Check for correlation patterns between co-occurrence networks topology and environmental parameters.
+require("PerformanceAnalytics")
+chart.Correlation(networkAnalysis[,c("meanLU","meanAL","meanDist","meanN","meanP","meanOrthoP","N","C","E","S","M","L","zeta")], histogram=TRUE, method="pearson")
+chart.Correlation(networkAnalysis[,c("meanLU","meanAL","meanDist","meanN","meanP","meanOrthoP","N_pos","C_pos","E_pos","S_pos","M_pos","L_pos","zeta_pos")], histogram=TRUE, method="pearson")
+chart.Correlation(networkAnalysis[,c("meanLU","meanAL","meanDist","meanN","meanP","meanOrthoP","N_neg","C_neg","E_neg","S_neg","M_neg","L_neg","zeta_neg")], histogram=TRUE, method="spearman")
+
+require(Hmisc)
+require(xtable)
+# x is a matrix containing the data
+# method : correlation method. "pearson"" or "spearman"" is supported
+# removeTriangle : remove upper or lower triangle
+# results :  if "html" or "latex"
+# the results will be displayed in html or latex format
+corstars <-function(x, method=c("pearson", "spearman"), removeTriangle=c("upper", "lower"),
+                    result=c("none", "html", "latex")){
+  #Compute correlation matrix
+  x <- as.matrix(x)
+  correlation_matrix<-rcorr(x, type=method[1])
+  R <- correlation_matrix$r # Matrix of correlation coeficients
+  p <- correlation_matrix$P # Matrix of p-value 
+  
+  ## Define notions for significance levels; spacing is important.
+  mystars <- ifelse(p < .0001, "****", ifelse(p < .001, "*** ", ifelse(p < .01, "**  ", ifelse(p < .05, "*   ", "    "))))
+  
+  ## trunctuate the correlation matrix to two decimal
+  R <- format(round(cbind(rep(-1.11, ncol(x)), R), 2))[,-1]
+  
+  ## build a new matrix that includes the correlations with their apropriate stars
+  Rnew <- matrix(paste(R, mystars, sep=""), ncol=ncol(x))
+  diag(Rnew) <- paste(diag(R), " ", sep="")
+  rownames(Rnew) <- colnames(x)
+  colnames(Rnew) <- paste(colnames(x), "", sep="")
+  
+  ## remove upper triangle of correlation matrix
+  if(removeTriangle[1]=="upper"){
+    Rnew <- as.matrix(Rnew)
+    Rnew[upper.tri(Rnew, diag = TRUE)] <- ""
+    Rnew <- as.data.frame(Rnew)
+  }
+  
+  ## remove lower triangle of correlation matrix
+  else if(removeTriangle[1]=="lower"){
+    Rnew <- as.matrix(Rnew)
+    Rnew[lower.tri(Rnew, diag = TRUE)] <- ""
+    Rnew <- as.data.frame(Rnew)
+  }
+  
+  ## remove last column and return the correlation matrix
+  Rnew <- cbind(Rnew[1:length(Rnew)-1])
+  if (result[1]=="none") return(Rnew)
+  else{
+    if(result[1]=="html") print(xtable(Rnew), type="html")
+    else print(xtable(Rnew), type="latex") 
+  }
+} 
+
+communityType <- "BMIs"
+taxonomicLevels <- c("class", "order", "family", "genus","species", "OTUID")
+netMatTotal <- data.frame()
+for(taxonomicLevel in taxonomicLevels){
+  networkAnalysis <- read.table(paste("networkAnalysis18SV9",communityType,taxonomicLevel,".txt",sep=""), header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
+  x <- networkAnalysis[,c("meanLU","meanAL","meanN","meanP","meanOrthoP","N","C","S","M","L","zeta")]
+  netMat <- corstars(x,method="pearson",removeTriangle="upper",result="none")
+  netMat <- as.data.frame(netMat[rownames(netMat) %in% c("N","C","S","M","L","zeta"),colnames(netMat) %in% c("meanLU","meanAL","meanN","meanP","meanOrthoP")])
+  netMat$TaxonomicLevel <- taxonomicLevel
+  netMatTotal <- rbind(netMatTotal,netMat)
+}
