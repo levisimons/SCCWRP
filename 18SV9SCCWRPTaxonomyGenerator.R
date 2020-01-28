@@ -94,7 +94,7 @@ for(j in 1:nrow(uniqueBMIs)){
   }
 }
 BMITaxonomies <- BMITaxonomies[c("OTUID","kingdom","phylum","class","order","family","genus","species")]
-write.table("18SV9",BMITaxonomies,"BMITaxonomies.txt",quote=FALSE,sep="\t",row.names = FALSE)
+write.table(BMITaxonomies,"BMITaxonomies18SV9.txt",quote=FALSE,sep="\t",row.names = FALSE)
 
 #Read in SCCWRP algal taxonomic phyla-level ids in order to subset read data and focus analyses on just algae.
 AlgaeList <- read.table("algae_STE.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8",na.strings=c("","NA"))
@@ -152,4 +152,4 @@ for(j in 1:nrow(uniqueAlgae)){
   }
 }
 AlgaeTaxonomies <- AlgaeTaxonomies[c("OTUID","kingdom","phylum","class","order","family","genus","species")]
-write.table("18SV9",AlgaeTaxonomies,"AlgaeTaxonomies.txt",quote=FALSE,sep="\t",row.names = FALSE)
+write.table(AlgaeTaxonomies,"AlgaeTaxonomies18SV9.txt",quote=FALSE,sep="\t",row.names = FALSE)
