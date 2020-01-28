@@ -50,11 +50,11 @@ uniqueOTUs <- replace_with_na_all(data=uniqueOTUs,condition=~.x %in% as.list(amb
 
 #Subset 18Sv9 OTU table to only contain taxonomic BMI data from SCCWRP
 #Generated here: https://github.com/levisimons/SCCWRP/blob/master/SCCWRPTaxonomyGenerator.R
-uniqueBMIs <- read.table("BMITaxonomies.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
+uniqueBMIs <- read.table("BMITaxonomies18SV9.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
 
 #Subset 18Sv9 OTU table to only contain taxonomic algal data from SCCWRP
 #Generated here: https://github.com/levisimons/SCCWRP/blob/master/SCCWRPTaxonomyGenerator.R
-uniqueAlgae <- read.table("AlgaeTaxonomies.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
+uniqueAlgae <- read.table("AlgaeTaxonomies18SV9.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
 
 #Create a merged metagenomic count table.
 if(communityType==""){
