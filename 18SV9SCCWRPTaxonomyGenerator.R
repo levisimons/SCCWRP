@@ -39,14 +39,77 @@ uniqueOTUs <- replace_with_na_all(data=uniqueOTUs,condition=~.x %in% as.list(amb
 #Get the furthest resolved taxonomic level.
 uniqueOTUs$LeafTaxa <- apply(uniqueOTUs[,!colnames(uniqueOTUs) %in% c("FullTaxonomy")], 1, function(x) tail(na.omit(x), 1))
 
+#Get all animal OTUs.
+animalOTUs <- uniqueOTUs[uniqueOTUs$Rank4=="Metazoa (Animalia)",]
+animalOTUs <- animalOTUs[!is.na(animalOTUs$OTUID),]
+# Get full taxonomies for all animal OTUs.
+AnimalTaxonomies <- data.frame()
+i=0
+for(name in unique(animalOTUs$LeafTaxa)){
+  tmp <- classification(name,db="ncbi",rows=1)
+  #Sys.sleep(0.5)
+  if(nrow(as.data.frame(tmp[1]))>1){
+    tmp <- as.data.frame(tmp[1])
+    colnames(tmp) <- c("taxa","rank","id")
+    tmp <- tmp[tmp$rank!="no rank",]
+    if(nrow(tmp)>1){
+      tmp <- as.data.frame(t(tmp[,c("taxa","rank")]))
+      colnames(tmp) <- as.character(unlist(tmp["rank",]))
+      tmp <- tmp[!row.names(tmp) %in% c("rank"),]
+      rownames(tmp) <- name
+      tmp$LeafTaxa <- name
+      AnimalTaxonomies <- dplyr::bind_rows(AnimalTaxonomies,tmp)
+      i=i+1
+      print(paste("Animal",i,length(unique(animalOTUs$LeafTaxa))))
+    } else{
+      tmp <- classification(name,db="gbif",rows=1)
+      #Sys.sleep(0.5)
+      if(nrow(as.data.frame(tmp[1]))>1){
+        tmp <- as.data.frame(tmp[1])
+        colnames(tmp) <- c("taxa","rank","id")
+        tmp <- tmp[tmp$rank!="no rank",]
+        if(nrow(tmp)>1){
+          tmp <- as.data.frame(t(tmp[,c("taxa","rank")]))
+          colnames(tmp) <- as.character(unlist(tmp["rank",]))
+          tmp <- tmp[!row.names(tmp) %in% c("rank"),]
+          rownames(tmp) <- name
+          tmp$LeafTaxa <- name
+          AnimalTaxonomies <- dplyr::bind_rows(AnimalTaxonomies,tmp)
+          i=i+1
+          print(paste("Animal",i,length(unique(animalOTUs$LeafTaxa))))
+        }
+      }
+    }
+  }
+}
+
+#Organize animal taxonomies.
+rankList <- c("LeafTaxa","species","genus","family","superfamily","suborder","order","infraclass","subclass","class","subphylum","phylum","kingdom","superkingdom")
+AnimalTaxonomies <- AnimalTaxonomies[,rankList]
+AnimalTaxonomies[] <- lapply(AnimalTaxonomies,as.character)
+AnimalTaxonomies <- AnimalTaxonomies[AnimalTaxonomies$kingdom=="Metazoa" & !is.na(AnimalTaxonomies$phylum),]
+
 #Read in SCCWRP BMI taxonomic family-level ids in order to subset read data and focus analyses on just BMIs.
 BMIList <- read.table("bug_STE.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8",na.strings=c("","NA"))
+BMIList <- data.frame(lapply(BMIList, trimws), stringsAsFactors = FALSE)
 BMIList <- unique(BMIList$FamilyNames)
 BMIList <- na.omit(BMIList)
 
-BMITaxonomies <- data.frame()
+#Subset 18Sv9 OTU table to only contain taxonomic BMI data from SCCWRP
+BMITaxonomies <- AnimalTaxonomies[apply(AnimalTaxonomies, 1, function(x) any(x %in% BMIList)),]
+uniqueBMIs <- uniqueOTUs[grep(paste(unique(BMITaxonomies$LeafTaxa),collapse="|"),uniqueOTUs$FullTaxonomy),]
+uniqueBMIs <- dplyr::left_join(uniqueBMIs,BMITaxonomies,by=c("LeafTaxa"))
+rankList <- c("OTUID",rankList)
+uniqueBMIs <- uniqueBMIs[,rankList]
+write.table(uniqueBMIs,"BMITaxonomies18SV9.txt",quote=FALSE,sep="\t",row.names = FALSE)
+
+#Get all plant OTUs.
+plantOTUs <- uniqueOTUs[uniqueOTUs$Rank4 %in% c("Chlorophyta","Charophyta"),]
+plantOTUs <- plantOTUs[plantOTUs$LeafTaxa!="Chlorophyta" & plantOTUs$LeafTaxa!="Charophyta",]
+# Get full taxonomies for all animal OTUs.
+PlantTaxonomies <- data.frame()
 i=0
-for(name in BMIList){
+for(name in unique(plantOTUs$LeafTaxa)){
   tmp <- classification(name,db="ncbi",rows=1)
   #Sys.sleep(0.5)
   if(nrow(as.data.frame(tmp[1]))>1){
@@ -59,9 +122,9 @@ for(name in BMIList){
       tmp <- tmp[!row.names(tmp) %in% c("rank"),]
       rownames(tmp) <- name
       tmp$LeafTaxa <- name
-      BMITaxonomies <- dplyr::bind_rows(BMITaxonomies,tmp)
+      PlantTaxonomies <- dplyr::bind_rows(PlantTaxonomies,tmp)
       i=i+1
-      print(paste("BMIs",i,length(BMIList)))
+      print(paste("Plants",i,length(unique(plantOTUs$LeafTaxa))))
     } else{
       tmp <- classification(name,db="gbif",rows=1)
       #Sys.sleep(0.5)
@@ -75,158 +138,33 @@ for(name in BMIList){
           tmp <- tmp[!row.names(tmp) %in% c("rank"),]
           rownames(tmp) <- name
           tmp$LeafTaxa <- name
-          BMITaxonomies <- dplyr::bind_rows(BMITaxonomies,tmp)
+          PlantTaxonomies <- dplyr::bind_rows(PlantTaxonomies,tmp)
           i=i+1
-          print(paste("BMIs",i,length(BMIList)))
+          print(paste("Plant",i,length(unique(PlantOTUs$LeafTaxa))))
         }
       }
     }
   }
 }
+#Organize plant taxonomies.
+rankList <- c("LeafTaxa","varietas","species","subgenus","genus","subtribe","tribe","subfamily","family","order","superorder","subclass","class","subphylum","phylum","kingdom","superkingdom")
+PlantTaxonomies <- PlantTaxonomies[,rankList]
+PlantTaxonomies[] <- lapply(PlantTaxonomies,as.character)
+PlantTaxonomies <- PlantTaxonomies[PlantTaxonomies$kingdom=="Viridiplantae",]
+
+#Read in SCCWRP algal taxonomic ids in order to subset read data and focus analyses on just algae.
+AlgaeList <- read.table("algae_STE.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8",na.strings=c("","NA"))
+AlgaeList <- AlgaeList[AlgaeList$Kingdom=="Eukaryota",]
+AlgaeList <- AlgaeList[, !duplicated(colnames(AlgaeList))]
+AlgaeList <- dplyr::rename(AlgaeList,LeafTaxa = FinalIDassigned)
+AlgaeList$FinalID <- NULL
+AlgaeList <- AlgaeList[!duplicated(AlgaeList),]
+AlgaeList <- na.omit(unique(AlgaeList$LeafTaxa))
 
 #Subset 18Sv9 OTU table to only contain taxonomic BMI data from SCCWRP
-BMITaxonomies <- na.omit(unique(unlist(BMITaxonomies)))
-BMITaxonomies <- BMITaxonomies[!grepl("\\d",BMITaxonomies)] #Remove numerical taxa terms.
-uniqueBMIs <- uniqueOTUs[grep(paste(BMITaxonomies,collapse="|"),uniqueOTUs$FullTaxonomy),]
-#
-BMIList <- na.omit(unique(uniqueBMIs$LeafTaxa))
-BMITaxonomies <- data.frame()
-i=0
-for(name in BMIList){
-  tmp <- classification(name,db="ncbi",rows=1)
-  #Sys.sleep(0.5)
-  if(nrow(as.data.frame(tmp[1]))>1){
-    tmp <- as.data.frame(tmp[1])
-    colnames(tmp) <- c("taxa","rank","id")
-    tmp <- tmp[tmp$rank!="no rank",]
-    if(nrow(tmp)>1){
-      tmp <- as.data.frame(t(tmp[,c("taxa","rank")]))
-      colnames(tmp) <- as.character(unlist(tmp["rank",]))
-      tmp <- tmp[!row.names(tmp) %in% c("rank"),]
-      rownames(tmp) <- name
-      tmp$LeafTaxa <- name
-      BMITaxonomies <- dplyr::bind_rows(BMITaxonomies,tmp)
-      i=i+1
-      print(paste("BMIs",i,length(BMIList)))
-    } else{
-      tmp <- classification(name,db="gbif",rows=1)
-      #Sys.sleep(0.5)
-      if(nrow(as.data.frame(tmp[1]))>1){
-        tmp <- as.data.frame(tmp[1])
-        colnames(tmp) <- c("taxa","rank","id")
-        tmp <- tmp[tmp$rank!="no rank",]
-        if(nrow(tmp)>1){
-          tmp <- as.data.frame(t(tmp[,c("taxa","rank")]))
-          colnames(tmp) <- as.character(unlist(tmp["rank",]))
-          tmp <- tmp[!row.names(tmp) %in% c("rank"),]
-          rownames(tmp) <- name
-          tmp$LeafTaxa <- name
-          BMITaxonomies <- dplyr::bind_rows(BMITaxonomies,tmp)
-          i=i+1
-          print(paste("BMIs",i,length(BMIList)))
-        }
-      }
-    }
-  }
-}
-BMITaxonomies <- dplyr::left_join(BMITaxonomies,uniqueBMIs,by=c("LeafTaxa"))
-BMITaxonomies <- BMITaxonomies[BMITaxonomies$kingdom=="Metazoa",]
-BMITaxonomies <- BMITaxonomies[c("OTUID","kingdom","phylum","class","order","family","genus","species")]
-
-write.table(BMITaxonomies,"BMITaxonomies18SV9.txt",quote=FALSE,sep="\t",row.names = FALSE)
-
-#Read in SCCWRP algal taxonomic phyla-level ids in order to subset read data and focus analyses on just algae.
-AlgaeList <- read.table("algae_STE.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8",na.strings=c("","NA"))
-AlgaeList <- na.omit(unique(AlgaeList$Phylum))
-AlgaeList <- na.omit(AlgaeList)
-AlgaeList <- AlgaeList[!(AlgaeList %in% c("Eukaryota","Cyanobacteria","Bacteria"))]
-AlgalTaxonomies <- data.frame()
-i=0
-for(name in AlgaeList){
-  tmp <- classification(name,db="ncbi",rows=1)
-  #Sys.sleep(0.5)
-  if(nrow(as.data.frame(tmp[1]))>1){
-    tmp <- as.data.frame(tmp[1])
-    colnames(tmp) <- c("taxa","rank","id")
-    tmp <- tmp[tmp$rank!="no rank",]
-    if(nrow(tmp)>1){
-      tmp <- as.data.frame(t(tmp[,c("taxa","rank")]))
-      colnames(tmp) <- as.character(unlist(tmp["rank",]))
-      tmp <- tmp[!row.names(tmp) %in% c("rank"),]
-      rownames(tmp) <- name
-      tmp$LeafTaxa <- name
-      AlgalTaxonomies <- dplyr::bind_rows(AlgalTaxonomies,tmp)
-      i=i+1
-      print(paste("Algae",i,length(AlgaeList)))
-    } else{
-      tmp <- classification(name,db="gbif",rows=1)
-      #Sys.sleep(0.5)
-      if(nrow(as.data.frame(tmp[1]))>1){
-        tmp <- as.data.frame(tmp[1])
-        colnames(tmp) <- c("taxa","rank","id")
-        tmp <- tmp[tmp$rank!="no rank",]
-        if(nrow(tmp)>1){
-          tmp <- as.data.frame(t(tmp[,c("taxa","rank")]))
-          colnames(tmp) <- as.character(unlist(tmp["rank",]))
-          tmp <- tmp[!row.names(tmp) %in% c("rank"),]
-          rownames(tmp) <- name
-          tmp$LeafTaxa <- name
-          AlgalTaxonomies <- dplyr::bind_rows(AlgalTaxonomies,tmp)
-          i=i+1
-          print(paste("Algae",i,length(AlgaeList)))
-        }
-      }
-    }
-  }
-}
-
-#Subset 18Sv9 OTU table to only contain taxonomic algal data from SCCWRP
-AlgalTaxonomies <- na.omit(unique(unlist(AlgalTaxonomies)))
-AlgalTaxonomies <- AlgalTaxonomies[!grepl("\\d",AlgalTaxonomies)]
-uniqueAlgae <- uniqueOTUs[grep(paste(AlgalTaxonomies,collapse="|"),uniqueOTUs$FullTaxonomy),]
-#
-AlgaeList <- na.omit(unique(uniqueAlgae$LeafTaxa))
-AlgalTaxonomies <- data.frame()
-i=0
-for(name in AlgaeList){
-  tmp <- classification(name,db="ncbi",rows=1)
-  #Sys.sleep(0.5)
-  if(nrow(as.data.frame(tmp[1]))>1){
-    tmp <- as.data.frame(tmp[1])
-    colnames(tmp) <- c("taxa","rank","id")
-    tmp <- tmp[tmp$rank!="no rank",]
-    if(nrow(tmp)>1){
-      tmp <- as.data.frame(t(tmp[,c("taxa","rank")]))
-      colnames(tmp) <- as.character(unlist(tmp["rank",]))
-      tmp <- tmp[!row.names(tmp) %in% c("rank"),]
-      rownames(tmp) <- name
-      tmp$LeafTaxa <- name
-      AlgalTaxonomies <- dplyr::bind_rows(AlgalTaxonomies,tmp)
-      i=i+1
-      print(paste("Algae",i,length(AlgaeList)))
-    } else{
-      tmp <- classification(name,db="gbif",rows=1)
-      #Sys.sleep(0.5)
-      if(nrow(as.data.frame(tmp[1]))>1){
-        tmp <- as.data.frame(tmp[1])
-        colnames(tmp) <- c("taxa","rank","id")
-        tmp <- tmp[tmp$rank!="no rank",]
-        if(nrow(tmp)>1){
-          tmp <- as.data.frame(t(tmp[,c("taxa","rank")]))
-          colnames(tmp) <- as.character(unlist(tmp["rank",]))
-          tmp <- tmp[!row.names(tmp) %in% c("rank"),]
-          rownames(tmp) <- name
-          tmp$LeafTaxa <- name
-          AlgalTaxonomies <- dplyr::bind_rows(AlgalTaxonomies,tmp)
-          i=i+1
-          print(paste("Algae",i,length(AlgaeList)))
-        }
-      }
-    }
-  }
-}
-AlgalTaxonomies[] <- lapply(AlgalTaxonomies,as.character)
-AlgalTaxonomies <- AlgalTaxonomies[!AlgalTaxonomies$kingdom %in% c("Chromista","Metazoa"),]
-AlgalTaxonomies <- dplyr::left_join(AlgalTaxonomies,uniqueAlgae,by=c("LeafTaxa"))
-AlgalTaxonomies <- AlgalTaxonomies[c("OTUID","kingdom","phylum","class","order","family","genus","species")]
-write.table(AlgalTaxonomies,"AlgaeTaxonomies18SV9.txt",quote=FALSE,sep="\t",row.names = FALSE)
+AlgaeTaxonomies <- PlantTaxonomies[apply(PlantTaxonomies, 1, function(x) any(x %in% AlgaeList)),]
+uniqueAlgae <- uniqueOTUs[grep(paste(unique(AlgaeTaxonomies$LeafTaxa),collapse="|"),uniqueOTUs$FullTaxonomy),]
+uniqueAlgae <- dplyr::left_join(uniqueAlgae,AlgaeTaxonomies,by=c("LeafTaxa"))
+rankList <- c("OTUID",rankList)
+uniqueAlgae <- uniqueAlgae[,rankList]
+write.table(uniqueAlgae,"BMITaxonomies18SV9.txt",quote=FALSE,sep="\t",row.names = FALSE)
