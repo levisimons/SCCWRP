@@ -73,14 +73,15 @@ uniqueOTUs[,colnames(uniqueOTUs) %in% rankList] <- tmp[,colnames(tmp) %in% rankL
 uniqueBacteria <- read.table("BacteriaTaxonomies16SV4b.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
 communityInput <- left_join(uniqueBacteria,communityInputRawPlate1,by="OTUID")
 communityInput <- left_join(communityInput,communityInputRawPlate2,by="OTUID")
+communityInput <- communityInput %>% mutate_if(is.logical, as.character)
 #Remove unnecessary sample columns.
-communityInput <- communityInput[, -which(names(communityInput)  %in% c("DNAStandard","Ext-Blank","Ext-Blank1","Ext-Blank2","FB","NTC","ntc","SNAStandardII","ConsensusLineage.y","DNAstandardI","DNAstandardII","ConsensusLineage.x","202","230.x","230.y","FullTaxonomy"))]
+communityInput <- communityInput[, -which(names(communityInput)  %in% c("DNAStandard","Ext-Blank","Ext-Blank1","Ext-Blank2","ExtBlank","ExtBlank1","FB","NTC","ntc","SNAStandardII","ConsensusLineage.y","DNAstandardI","DNAstandardII","ConsensusLineage.x","202","230.x","230.y","FullTaxonomy"))]
 ##
 
 #Choose a taxonomic level to group count data by.
-#Levels are Domain, Kingdom, Phylum, Class, Order, Family, GenusSpecies, OTUID
-taxonomicLevels <- c("superkingdom", "phylum", "class", "order", "family", "genus","species", "OTUID")
-taxonomicLevel <- c("OTUID") #Choose a taxonomic level to aggregate count data on.
+#Levels are "superkingdom", "phylum", "class", "order", "family", "genus","species", "OTUID"
+taxonomicLevels <- colnames(communityInput[, sapply(communityInput, is.character)])
+taxonomicLevel <- c("species") #Choose a taxonomic level to aggregate count data on.
 taxonomicIgnore <- taxonomicLevels[taxonomicLevels != taxonomicLevel]
 
 #Remove unnecessary sample columns.
@@ -99,8 +100,8 @@ rownames(communityInputSummarized) <- Filter(is.character, communityInputSummari
 communityInputSummarized[,which(colnames(communityInputSummarized)==taxonomicLevel)] <- NULL
 communityInputSummarized[is.na(communityInputSummarized)] <- 0
 #Keep only if at least three reads are present.
-communityInputSummarized[communityInputSummarized <= 20] <- 0
-communityInputSummarized[communityInputSummarized > 20] <- 1
+communityInputSummarized[communityInputSummarized <= 2] <- 0
+communityInputSummarized[communityInputSummarized > 2] <- 1
 
 #Calculte taxonomic richness by sample.
 communityRichness <- as.data.frame(colSums(communityInputSummarized))
@@ -137,6 +138,16 @@ NPdata[NPdata<0] <- NA
 
 #Merge in nitrogen and phosphorus site data into metada.
 metadata <- dplyr::left_join(metadata,NPdata,by=c("StationCode"))
+
+#Extract sampling year
+metadata$Year <- as.numeric(format(as.Date(metadata$Date,"%m/%d/%y"),"%Y"))
+
+#Extract CSCI values.
+CSCI <- read.table("ALS_DataRequest_CSCI.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
+CSCI <- CSCI[,c("stationcode","sampleyear","csci")]
+colnames(CSCI) <- c("StationCode","Year","csci")
+
+metadata <- dplyr::left_join(metadata,CSCI,by=c("StationCode","Year"))
 
 #Read in watershed by sample site location data.
 SCCWRP <- read.table("MetagenomicSitesWithWatershedsEcoregions.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
@@ -184,6 +195,12 @@ for(j in 1:100){
     zeta_Nsd <- Zeta.order.ex(data.spec,order=zetaMax,rescale=TRUE)$zeta.val.sd #Higher order zeta diversity measure standard deviation.
     zeta_1 <- Zeta.order.ex(data.spec,order=1,rescale=TRUE)$zeta.val #lower order zeta diversity measure.
     zeta_1sd <- Zeta.order.ex(data.spec,order=1,rescale=TRUE)$zeta.val.sd #lower order zeta diversity measure standard deviation.
+    zeta_2 <- Zeta.order.ex(data.spec,order=2,rescale=TRUE)$zeta.val #lower order zeta diversity measure.
+    zeta_2sd <- Zeta.order.ex(data.spec,order=2,rescale=TRUE)$zeta.val.sd #lower order zeta diversity measure standard deviation.
+    zeta_3 <- Zeta.order.ex(data.spec,order=3,rescale=TRUE)$zeta.val #lower order zeta diversity measure.
+    zeta_3sd <- Zeta.order.ex(data.spec,order=3,rescale=TRUE)$zeta.val.sd #lower order zeta diversity measure standard deviation.
+    zeta_4 <- Zeta.order.ex(data.spec,order=4,rescale=TRUE)$zeta.val #lower order zeta diversity measure.
+    zeta_4sd <- Zeta.order.ex(data.spec,order=4,rescale=TRUE)$zeta.val.sd #lower order zeta diversity measure standard deviation.
     ExpExp <- zetaDecay$zeta.exp$coefficients[2] #Zeta diversity exponential decay exponent.
     ExpAIC <- zetaDecay$aic$AIC[1] #AIC coefficient Zeta diversity exponential decay.
     PLExp <- zetaDecay$zeta.pl$coefficients[2] #Zeta diversity power law decay exponent.
@@ -202,17 +219,22 @@ for(j in 1:100){
     sdOrthoP <- sd(metadataSubset$MaxOrthoP,na.rm=T)
     meanN <- mean(metadataSubset$MaxN,na.rm=T)
     sdN <- sd(metadataSubset$MaxN,na.rm=T)
+    meanCSCI <- mean(metadataSubset$csci,na.rm=T)
+    sdCSCI <- sd(metadata$csci,na.rm=T)
     print(j)
-    print(paste(LUBand,meanLU,sdLU,meanAL,sdAL,meanDist,sdDist,numWS,meanP,sdP,meanOrthoP,sdOrthoP,meanN,sdN,zeta_N,zeta_Nsd,zeta_1,zeta_1sd,ExpExp,ExpAIC,PLExp,PLAIC))
-    dataRow <- t(as.data.frame(list(c(LUBand,meanLU,sdLU,meanAL,sdAL,meanDist,sdDist,numWS,meanP,sdP,meanOrthoP,sdOrthoP,meanN,sdN,zeta_N,zeta_Nsd,zeta_1,zeta_1sd,ExpExp,ExpAIC,PLExp,PLAIC))))
+    print(paste(LUBand,meanLU,sdLU,meanAL,sdAL,meanDist,sdDist,numWS,meanP,sdP,meanOrthoP,sdOrthoP,meanN,sdN,meanCSCI,sdCSCI,zeta_N,zeta_Nsd,zeta_1,zeta_1sd,zeta_2,zeta_2sd,zeta_3,zeta_3sd,zeta_4,zeta_4sd,ExpExp,ExpAIC,PLExp,PLAIC))
+    dataRow <- t(as.data.frame(list(c(LUBand,meanLU,sdLU,meanAL,sdAL,meanDist,sdDist,numWS,meanP,sdP,meanOrthoP,sdOrthoP,meanN,sdN,meanCSCI,sdCSCI,zeta_N,zeta_Nsd,zeta_1,zeta_1sd,zeta_2,zeta_2sd,zeta_3,zeta_3sd,zeta_4,zeta_4sd,ExpExp,ExpAIC,PLExp,PLAIC))))
     rownames(dataRow) <- NULL
     zetaAnalysis <- rbind(zetaAnalysis,dataRow)
   }
 }
-colnames(zetaAnalysis) <- c("LUBand","meanLU","sdLU","meanAL","sdAL","meanDist","sdDist","numWS","meanP","sdP","meanOrthoP","sdOrthoP","meanN","sdN","zeta_N","zeta_Nsd","zeta_1","zeta_1sd","ExpExp","ExpAIC","PLExp","PLAIC")
+colnames(zetaAnalysis) <- c("LUBand","meanLU","sdLU","meanAL","sdAL","meanDist","sdDist","numWS","meanP","sdP","meanOrthoP","sdOrthoP","meanN","sdN","meanCSCI","sdCSCI","zeta_N","zeta_Nsd","zeta_1","zeta_1sd","zeta_2","zeta_2sd","zeta_3","zeta_3sd","zeta_4","zeta_4sd","ExpExp","ExpAIC","PLExp","PLAIC")
 indx <- sapply(zetaAnalysis, is.factor)
 zetaAnalysis[indx] <- lapply(zetaAnalysis[indx], function(x) as.numeric(as.character(x)))
 zetaAnalysis$zeta_Nscaled <- zetaAnalysis$zeta_N/zetaAnalysis$zeta_1
+zetaAnalysis$zeta_4scaled <- zetaAnalysis$zeta_4/zetaAnalysis$zeta_1
+zetaAnalysis$zeta_3scaled <- zetaAnalysis$zeta_3/zetaAnalysis$zeta_1
+zetaAnalysis$zeta_2scaled <- zetaAnalysis$zeta_2/zetaAnalysis$zeta_1
 #Save zeta diversity analysis for a given taxonomic level.
 write.table(zetaAnalysis,paste("zetaAnalysis16SV4b",taxonomicLevel,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
 #
