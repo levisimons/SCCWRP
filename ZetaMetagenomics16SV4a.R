@@ -31,60 +31,51 @@ uniqueOTUs$ConsensusLineage <- gsub("D_[0-9]+__","",uniqueOTUs$ConsensusLineage)
 uniqueOTUs$ConsensusLineage <- gsub("g__","",uniqueOTUs$ConsensusLineage)
 #Split OTU names into Domain through Genus+Species.
 uniqueOTUs$FullTaxonomy <- uniqueOTUs$ConsensusLineage
-uniqueOTUs <- suppressWarnings(separate(uniqueOTUs,'ConsensusLineage',c("Rank1", "Rank2","Rank3","Rank4","Rank5","Rank6","Rank7and8"),sep=";", extra="drop"))
-uniqueOTUs$Rank7and8 <- trimws(uniqueOTUs$Rank7and8,which="left") #Remove starting blank space from genus names
-uniqueOTUs <- suppressWarnings(separate(uniqueOTUs,'Rank7and8',c("Rank7","Rank8"),sep=" ", extra="warn"))
+uniqueOTUs <- suppressWarnings(separate(uniqueOTUs,'ConsensusLineage',c("Rank1", "Rank2","Rank3","Rank4","Rank5","Rank6","Rank7"),sep=";", extra="drop"))
+uniqueOTUs$Rank7 <- trimws(uniqueOTUs$Rank7,which="left") #Remove starting blank space from genus names
 uniqueOTUs <- uniqueOTUs[!duplicated(uniqueOTUs$OTUID),]
 uniqueOTUs <- data.frame(lapply(uniqueOTUs, trimws), stringsAsFactors = FALSE) #Filter out whitespace for text management.
 #Filter out ambiguous taxonomies
 uniqueOTUs <- uniqueOTUs[uniqueOTUs$Rank1!="Unassigned",]
-rankList <- c("Rank1","Rank2","Rank3","Rank4","Rank5","Rank6","Rank7","Rank8")
+rankList <- grep("Rank",colnames(uniqueOTUs),value=T)
 #Get initial list of taxonomic names.
-uniqueNames <- trimws(unique(unlist(uniqueOTUs[,colnames(uniqueOTUs) %in% rankList])),which="both")
 #Define list of ambiguous taxonomic terms.
-ambiguousNames <- c("Incertae Sedis","metagenome","environmental","organism",
-                    "eukaryote","uncultured","soil","group","marine","cf","unidentified","Uncultured",
-                    "invertebrate"," bacterium","Unassigned","clone","compost","symbiont","manure","Chloroplast",
-                    "Unknown","agricultural","algae"," alpha","cluster","anaerobic",
-                    "Antarctic"," beta","bioreactor","candidate","Chloroplast",
-                    "clade"," delta","denitrifying","Ambiguous",
-                    "diatom","division","endolithic","endophytic","enrichment","epidermidis",
-                    " epsilon","Family XI","Family XII","Family XIII","Family XVIII","FBP",
-                    "fecal","flagellate","forest","fragile"," gamma","Green","groundwater","gut","hgcI clade",
-                    "JGI","lake","lineage","Lineage IIa","Lineage IIb","Lineage IIc",
-                    "Lineage IV","low","microorganism","minor","permafrost","phototrophic","prokaryote",
-                    "RFB","SCGC","sediment","sludge","subdivision","Termite","UW")
+ambiguousList <- c("Incertae Sedis","metagenome","environmental","organism",
+                   "eukaryote","uncultured","soil","group","marine","cf","unidentified","Uncultured",
+                   "invertebrate"," bacterium","Unassigned","clone","compost","symbiont","manure","Chloroplast",
+                   "Unknown","agricultural","algae"," alpha","cluster","anaerobic",
+                   "Antarctic"," beta","bioreactor","candidate","Chloroplast",
+                   "clade"," delta","denitrifying","Ambiguous",
+                   "diatom","division","endolithic","endophytic","enrichment","epidermidis",
+                   " epsilon","Family XI","Family XII","Family XIII","Family XVIII","FBP",
+                   "fecal","flagellate","forest","fragile"," gamma","Green","groundwater","gut","hgcI clade",
+                   "JGI","lake","lineage","Lineage IIa","Lineage IIb","Lineage IIc",
+                   "Lineage IV","low","microorganism","minor","permafrost","phototrophic","prokaryote",
+                   "RFB","SCGC","sediment","sludge","subdivision","Termite","UW","Candidatus")
 #Determine full list of ambiguous taxonomic names which contain at least one of the ambiguous terms or a non-alphabetic character.
-ambiguousNames <- unique(c(uniqueNames[grepl(paste0(ambiguousNames,collapse="|"),uniqueNames,ignore.case=T)],uniqueNames[grepl("[[:punct:]]",uniqueNames)],uniqueNames[grepl("\\d",uniqueNames)]))
-
-#Replace all ambiguous taxa terms with NA
-tmp <- as.data.frame(lapply(uniqueOTUs[,colnames(uniqueOTUs) %in% rankList],as.character)) #Force factors to characters
-tmp[] <- lapply(tmp,as.character)
-for(term in ambiguousNames){
-  tmp[tmp==term] <- NA
-}
-
-#Remove remaining ambiguous taxa terms with NA
-tmp[tmp=="bacterium"] <- NA
-uniqueOTUs[,colnames(uniqueOTUs) %in% rankList] <- tmp[,colnames(tmp) %in% rankList]
+uniqueOTUs <- data.frame(lapply(uniqueOTUs, trimws), stringsAsFactors = FALSE)
+uniqueOTUs[,colnames(uniqueOTUs) %in% rankList] <- as.data.frame(lapply(uniqueOTUs[,colnames(uniqueOTUs) %in% rankList], function(x) replace(x, grep(paste0(ambiguousList,collapse="|"), x), NA)))
 
 #Read in taxonomically organized 16SV4a reads generated using this script:
 # https://github.com/levisimons/SCCWRP/blob/master/16SV4aSCCWRPTaxonomyGenerator.R
 uniqueBacteria <- read.table("BacteriaTaxonomies16SV4a.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
-communityInput <- left_join(uniqueBacteria,communityInputRawPlate1,by="OTUID")
-communityInput <- left_join(communityInput,communityInputRawPlate2,by="OTUID")
+
+#Create a merged metagenomic count table.
+communityInput <- dplyr::left_join(uniqueBacteria,communityInputRawPlate1,by="OTUID")
+communityInput <- dplyr::left_join(communityInput,communityInputRawPlate2,by="OTUID")
 #Remove unnecessary sample columns.
-communityInput <- communityInput[, -which(names(communityInput)  %in% c("DNAStandard","Ext-Blank","Ext-Blank1","Ext-Blank2","FB","NTC","SNAStandardII","ConsensusLineage.y","DNAstandardI","DNAstandardII","ConsensusLineage.x","202","230.x","230.y","FullTaxonomy"))]
-##
+communityInput <- communityInput[, -which(names(communityInput)  %in% c("DNAStandard","Ext-Blank1","Ext-Blank2","Ext-Blank","FB","NTC","ntc","SNAStandardII","ConsensusLineage.y","DNAstandardI","DNAstandardII","ConsensusLineage.x","202","230.x","230.y","FullTaxonomy"))]
+colnames(communityInput) <- trimws(colnames(communityInput),which="both")
 
 #Choose a taxonomic level to group count data by.
 #Levels are Domain, Kingdom, Phylum, Class, Order, Family, GenusSpecies, OTUID
-taxonomicLevels <- c("superkingdom", "phylum", "class", "order", "family", "genus","species", "OTUID")
-taxonomicLevel <- c("OTUID") #Choose a taxonomic level to aggregate count data on.
+taxonomicLevels <- colnames(communityInput[,grep("^[A-Za-z]", colnames(communityInput))])
+taxonomicLevel <- c("species") #Choose a taxonomic level to aggregate count data on.
 taxonomicIgnore <- taxonomicLevels[taxonomicLevels != taxonomicLevel]
+ignoreColumns <- c(rankList,taxonomicIgnore)
 
 #Remove unnecessary sample columns.
-communityInput <- communityInput[, -which(names(communityInput)  %in% taxonomicIgnore)]
+communityInput <- communityInput[, -which(names(communityInput)  %in% ignoreColumns)]
 communityInput <- communityInput[!is.na(communityInput[,colnames(communityInput)==taxonomicLevel]),]
 #Aggregate a taxonomic level to aggregate count data on.
 communityInput[is.na(communityInput)] <- 0
@@ -106,6 +97,11 @@ communityInputSummarized[communityInputSummarized > 2] <- 1
 communityRichness <- as.data.frame(colSums(communityInputSummarized))
 communityRichness$SampleNum <- as.numeric(rownames(communityRichness))
 colnames(communityRichness) <- c("Richness","SampleNum")
+
+#Calculate taxa prevalence
+communityPrevalence <- as.data.frame(rowSums(communityInputSummarized))
+communityPrevalence$Taxa <- row.names(communityPrevalence)
+colnames(communityPrevalence) <- c("Prevalence","Taxa")
 
 #Read in table linking sample IDs in the metagenomic table to sample station codes.
 sampleIDs <- read.table("SampleStationCodesID.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
@@ -138,6 +134,17 @@ NPdata[NPdata<0] <- NA
 #Merge in nitrogen and phosphorus site data into metada.
 metadata <- dplyr::left_join(metadata,NPdata,by=c("StationCode"))
 
+#Extract sampling year
+metadata$Year <- as.numeric(format(as.Date(metadata$Date,"%m/%d/%y"),"%Y"))
+
+#Extract CSCI values.
+CSCI <- read.table("ALS_DataRequest_CSCI.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
+CSCI <- CSCI[,c("stationcode","sampleyear","csci")]
+colnames(CSCI) <- c("StationCode","Year","csci")
+CSCI <- as.data.frame(aggregate(csci ~ .,data=CSCI,mean))
+
+metadata <- dplyr::left_join(metadata,CSCI,by=c("StationCode","Year"))
+
 #Read in watershed by sample site location data.
 SCCWRP <- read.table("MetagenomicSitesWithWatershedsEcoregions.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
 SCCWRP <- SCCWRP[,c("Latitude","Longitude","HUC8","PSA6","PSA8")]
@@ -163,9 +170,12 @@ metadata <- metadata[!is.na(metadata$Longitude),]
 
 #Add land use bands.  Band1 (Low): 0-3%, Band2 (Intermediate): 3-15%, Band3 (High): 15-100%.
 metadata$LUBand <- case_when(metadata$LU <= 3 ~ "1", metadata$LU > 3 & metadata$LU <= 15 ~ "2", metadata$LU > 15 ~ "3", TRUE ~ as.character(metadata$LU))
+colnames(metadata) <- trimws(colnames(metadata),which="both")
+
+metadata <- metadata[!is.na(metadata$csci),]
 
 set.seed(1)
-sample_Num <- 10
+sample_Num <- 10 #Number of stream samples
 zetaMax <- 5
 zetaAnalysis <- data.frame()
 for(j in 1:100){
@@ -231,13 +241,14 @@ zetaPlot+xlab("Mean LU")+ylab("Zeta_1")+scale_color_gradientn("Mean N",colours =
 
 #Check for correlation patterns between zeta diversity and environmental parameters.
 require("PerformanceAnalytics")
-chart.Correlation(zetaAnalysis[,c("zeta_Nscaled","meanLU","meanAL","meanDist","meanN","meanP","meanOrthoP")], histogram=TRUE, method="spearman")
+chart.Correlation(zetaAnalysis[,c("zeta_Nscaled","meanLU","meanAL","meanDist","meanN","meanP","meanOrthoP")], histogram=TRUE, method="pearson")
 
 #Calculate how much zeta diversity of a particular order decays with distance
-data.spec <- communityInputSummarized[,as.character(metadata$SampleNum)]
-#Create a species/site matrix for use in the zeta diversity functions.
-data.spec <- as.data.frame(t(data.spec))
-zetaDistance <- Zeta.ddecay(xy=metadata[,c("Latitude","Longitude")],data.spec=data.spec,order=5,distance.type="ortho",normalize="Jaccard",plot=FALSE)
+data.xy <- metadata[,c("Longitude","Latitude")]
+rownames(data.xy) <- metadata[,c("SampleNum")]
+data.spec <- as.data.frame(t(communityInputSummarized))
+data.spec <- data.spec[which(rownames(data.spec) %in% rownames(data.xy)),]
+zetaDistance <- Zeta.ddecay(xy=data.xy,data.spec=data.spec,order=5,distance.type="ortho",normalize="Jaccard",plot=FALSE)
 #How strongly correlated is zeta diversity with geographic distance?
 cor.test(zetaDistance$zeta.val,zetaDistance$distance,method="spearman")
 
@@ -252,13 +263,15 @@ t.test(NaRV.omit(zetaAnalysis$PLAIC),NaRV.omit(zetaAnalysis$ExpAIC),alternative=
 #b (the variation explained by either distance or the environment),
 #c (the variation explained by the environment alone) and 
 #d (the unexplained variation).
-data.env <- metadata[,c("LU","MaxN","MaxOrthoP","MaxP","elev_range","max_elev")]
+data.env <- metadata[,c("LU","site_elev")]
+data.env[] <- lapply(data.env,as.numeric)
 rownames(data.env) <- metadata[,c("SampleNum")]
 data.env <- na.omit(data.env)
 data.xy <- metadata[,c("Longitude","Latitude")]
 rownames(data.xy) <- metadata[,c("SampleNum")]
 data.xy <- data.xy[which(rownames(data.xy) %in% rownames(data.env)),]
-tmp <- data.spec[which(rownames(data.spec) %in% rownames(data.xy)),]
+data.spec <- as.data.frame(t(communityInputSummarized))
+data.spec <- data.spec[which(rownames(data.spec) %in% rownames(data.xy)),]
 zetaFactors <- Zeta.msgdm(data.spec=tmp,data.env=data.env,xy=data.xy,order=5,reg.type="glm",distance.type="ortho",normalize=FALSE,rescale=FALSE,control=list(maxit=100))
 zetaVar <- Zeta.varpart(zetaFactors)
 
