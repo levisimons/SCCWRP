@@ -15,6 +15,8 @@ options(ENTREZ_KEY="3f9e29c7c03842f72cf7523e34390d9f2208")
 wd <- "~/Desktop/SCCWRP/Metagenomics/"
 setwd(wd)
 
+#Define not-in function.
+`%notin%` <- Negate(`%in%`)
 #Read in metagenomic count tables and format them as presence/absence tables.
 communityInputRawPlate1 <- read.table("16SV4bP1TableWithTaxonomy.txt", header=T, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
 communityInputRawPlate2 <- read.table("16SV4bP2TableWithTaxonomy.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=F, encoding = "UTF-8")
@@ -38,33 +40,27 @@ uniqueOTUs <- uniqueOTUs[!duplicated(uniqueOTUs$OTUID),]
 uniqueOTUs <- data.frame(lapply(uniqueOTUs, trimws), stringsAsFactors = FALSE) #Filter out whitespace for text management.
 #Filter out ambiguous taxonomies
 uniqueOTUs <- uniqueOTUs[uniqueOTUs$Rank1!="Unassigned",]
-rankList <- c("Rank1","Rank2","Rank3","Rank4","Rank5","Rank6","Rank7")
+rankList <- grep("Rank",colnames(uniqueOTUs),value=T)
 #Get initial list of taxonomic names.
-uniqueNames <- trimws(unique(unlist(uniqueOTUs[,colnames(uniqueOTUs) %in% rankList])),which="both")
 #Define list of ambiguous taxonomic terms.
-ambiguousNames <- c("Incertae Sedis","metagenome","environmental","organism",
-                    "eukaryote","uncultured","soil","group","marine","cf","unidentified","Uncultured",
-                    "invertebrate"," bacterium","Unassigned","clone","compost","symbiont","manure","Chloroplast",
-                    "Unknown","agricultural","algae"," alpha","cluster","anaerobic",
-                    "Antarctic"," beta","bioreactor","candidate","Chloroplast",
-                    "clade"," delta","denitrifying","Ambiguous",
-                    "diatom","division","endolithic","endophytic","enrichment","epidermidis",
-                    " epsilon","Family XI","Family XII","Family XIII","Family XVIII","FBP",
-                    "fecal","flagellate","forest","fragile"," gamma","Green","groundwater","gut","hgcI clade",
-                    "JGI","lake","lineage","Lineage IIa","Lineage IIb","Lineage IIc",
-                    "Lineage IV","low","microorganism","minor","permafrost","phototrophic","prokaryote",
-                    "RFB","SCGC","sediment","sludge","subdivision","Termite","UW")
+ambiguousList <- c("Incertae Sedis","metagenome","environmental","organism",
+                   "eukaryote","uncultured","soil","group","marine","cf","unidentified","Uncultured",
+                   "invertebrate"," bacterium","Unassigned","clone","compost","symbiont","manure","Chloroplast",
+                   "Unknown","agricultural","algae"," alpha","cluster","anaerobic",
+                   "Antarctic"," beta","bioreactor","candidate","Chloroplast",
+                   "clade"," delta","denitrifying","Ambiguous",
+                   "diatom","division","endolithic","endophytic","enrichment","epidermidis",
+                   " epsilon","Family XI","Family XII","Family XIII","Family XVIII","FBP",
+                   "fecal","flagellate","forest","fragile"," gamma","Green","groundwater","gut","hgcI clade",
+                   "JGI","lake","lineage","Lineage IIa","Lineage IIb","Lineage IIc",
+                   "Lineage IV","low","microorganism","minor","permafrost","phototrophic","prokaryote",
+                   "RFB","SCGC","sediment","sludge","subdivision","Termite","UW","Candidatus")
 #Determine full list of ambiguous taxonomic names which contain at least one of the ambiguous terms or a non-alphabetic character.
-ambiguousNames <- unique(c(uniqueNames[grepl(paste0(ambiguousNames,collapse="|"),uniqueNames,ignore.case=T)],uniqueNames[grepl("[[:punct:]]",uniqueNames)],uniqueNames[grepl("\\d",uniqueNames)]))
-
-#Replace all ambiguous taxa terms with NA
-tmp <- as.data.frame(lapply(uniqueOTUs[,colnames(uniqueOTUs) %in% rankList],as.character)) #Force factors to characters
-tmp[] <- lapply(tmp,as.character)
-for(term in ambiguousNames){
-  tmp[tmp==term] <- NA
-}
+uniqueOTUs <- data.frame(lapply(uniqueOTUs, trimws), stringsAsFactors = FALSE)
+uniqueOTUs[,colnames(uniqueOTUs) %in% rankList] <- as.data.frame(lapply(uniqueOTUs[,colnames(uniqueOTUs) %in% rankList], function(x) replace(x, grep(paste0(ambiguousList,collapse="|"), x), NA)))
 
 #Remove remaining ambiguous taxa terms with NA
+tmp <- uniqueOTUs[,colnames(uniqueOTUs) %in% rankList]
 tmp[tmp=="bacterium"] <- NA
 uniqueOTUs[,colnames(uniqueOTUs) %in% rankList] <- tmp[,colnames(tmp) %in% rankList]
 
@@ -114,19 +110,16 @@ for(name in BacteriaList){
 }
 
 #Subset the 16Sv4b table to only contain resolved taxonomic data.
-rankList <- colnames(BacteriaTaxonomies)
+BacteriaTaxonomies <- BacteriaTaxonomies[BacteriaTaxonomies$superkingdom=="Bacteria" | BacteriaTaxonomies$superkingdom=="Archaea",]
 BacteriaTaxonomies[] <- lapply(BacteriaTaxonomies,as.character)
-tmp <- trimws(na.omit(unique(unlist(BacteriaTaxonomies))),which="both")
-for(term in grep(" bacterium",tmp,value=T)){
-  BacteriaTaxonomies[BacteriaTaxonomies==term] <- NA
-}
+
 #Filter out eukaryotes, organize taxonomic columns, and write output.
-BacteriaTaxonomies <- BacteriaTaxonomies[!BacteriaTaxonomies$superkingdom== "Eukaryota",]
 BacteriaTaxonomies <- dplyr::left_join(uniqueOTUs,BacteriaTaxonomies,by="LeafTaxa")
 BacteriaTaxonomies <- BacteriaTaxonomies[!is.na(BacteriaTaxonomies$superkingdom),]
-rankList <- c(c("OTUID","LeafTaxa"),rankList)
-BacteriaTaxonomies <- BacteriaTaxonomies[,rankList]
-BacteriaTaxonomies$LeafTaxa.1 <- NULL
+#Remove chloroplasts.
+tmp <- BacteriaTaxonomies[grep("Chloroplast",BacteriaTaxonomies$FullTaxonomy),]
+BacteriaTaxonomies <- BacteriaTaxonomies[BacteriaTaxonomies$OTUID %notin% tmp$OTUID,]
+
 write.table(BacteriaTaxonomies,"BacteriaTaxonomies16SV4b.txt",quote=FALSE,sep="\t",row.names = FALSE)
 #
-BacteriaTaxonomies <- read.table("BacteriaTaxonomies16SV4b.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
+#BacteriaTaxonomies <- read.table("BacteriaTaxonomies16SV4b.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
