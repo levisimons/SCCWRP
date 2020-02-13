@@ -6,6 +6,7 @@ require(tidyr)
 require(naniar)
 require(taxize)
 require(textclean)
+require(httr)
 
 ##Only run this once to generate full taxonomy files for prokaryotic samples.
 #Read in metagenomic count tables and format them as presence/absence tables.
@@ -67,13 +68,17 @@ uniqueOTUs[,colnames(uniqueOTUs) %in% rankList] <- tmp[,colnames(tmp) %in% rankL
 #Get the furthest resolved taxonomic level.
 uniqueOTUs$LeafTaxa <- apply(uniqueOTUs[,!colnames(uniqueOTUs) %in% c("FullTaxonomy")], 1, function(x) tail(na.omit(x), 1))
 
+#Remove chloroplasts.
+tmp <- uniqueOTUs[grep("Chloroplast",uniqueOTUs$FullTaxonomy),]
+uniqueOTUs <- uniqueOTUs[uniqueOTUs$OTUID %notin% tmp$OTUID,]
+#,callopts=list(timeout_ms=1000,terminate_on_success = FALSE)
 #Go through unique taxa names, resolved to the furthest taxonomic level, and try to obtain the full taxonomies.
 BacteriaList <- unique(uniqueOTUs$LeafTaxa)
 i=0
 BacteriaTaxonomies <- data.frame()
 for(name in BacteriaList){
   tmp <- classification(name,db="ncbi",rows=1)
-  #Sys.sleep(0.5)
+  Sys.sleep(0.2)
   if(nrow(as.data.frame(tmp[1]))>1){
     tmp <- as.data.frame(tmp[1])
     colnames(tmp) <- c("taxa","rank","id")
@@ -89,7 +94,7 @@ for(name in BacteriaList){
       print(paste("Bacteria",i,length(BacteriaList)))
     } else{
       tmp <- classification(name,db="gbif",rows=1)
-      #Sys.sleep(0.5)
+      Sys.sleep(0.2)
       if(nrow(as.data.frame(tmp[1]))>1){
         tmp <- as.data.frame(tmp[1])
         colnames(tmp) <- c("taxa","rank","id")
@@ -116,9 +121,6 @@ BacteriaTaxonomies[] <- lapply(BacteriaTaxonomies,as.character)
 #Filter out eukaryotes, organize taxonomic columns, and write output.
 BacteriaTaxonomies <- dplyr::left_join(uniqueOTUs,BacteriaTaxonomies,by="LeafTaxa")
 BacteriaTaxonomies <- BacteriaTaxonomies[!is.na(BacteriaTaxonomies$superkingdom),]
-#Remove chloroplasts.
-tmp <- BacteriaTaxonomies[grep("Chloroplast",BacteriaTaxonomies$FullTaxonomy),]
-BacteriaTaxonomies <- BacteriaTaxonomies[BacteriaTaxonomies$OTUID %notin% tmp$OTUID,]
 
 write.table(BacteriaTaxonomies,"BacteriaTaxonomies16SV4b.txt",quote=FALSE,sep="\t",row.names = FALSE)
 #
