@@ -33,8 +33,8 @@ uniqueOTUs <- suppressWarnings(separate(uniqueOTUs,'ConsensusLineage',c("Rank1",
 uniqueOTUs$Rank7 <- trimws(uniqueOTUs$Rank7,which="left") #Remove starting blank space from genus names
 rankList <- grep("Rank",colnames(uniqueOTUs),value=T)
 #Read in taxonomically organized 16SV4a reads generated using this script:
-# https://github.com/levisimons/SCCWRP/blob/master/rcbLTaxonomyGenerator.R
-uniqueDiatoms <- read.table("DiatomTaxonomiesrcbL.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
+# https://github.com/levisimons/SCCWRP/blob/master/ZetaMetagenomicsrbcL.R
+uniqueDiatoms <- read.table("DiatomTaxonomiesrbcL.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
 
 #Create a merged metagenomic count table.
 communityInput <- dplyr::left_join(uniqueDiatoms,communityInputRawPlate1,by="OTUID")
