@@ -80,4 +80,4 @@ DiatomTaxonomies[] <- lapply(DiatomTaxonomies,as.character)
 #Merge OTUIDs with taxonomies
 DiatomTaxonomies$LeafTaxa <- trimws(DiatomTaxonomies$LeafTaxa,which="left") #Remove starting blank space from genus names
 uniqueDiatoms <- dplyr::left_join(uniqueOTUs,DiatomTaxonomies,by="LeafTaxa")
-write.table(uniqueDiatoms,"DiatomTaxonomiesrcbL.txt",quote=FALSE,sep="\t",row.names = FALSE)
+write.table(uniqueDiatoms,"DiatomTaxonomiesrbcL.txt",quote=FALSE,sep="\t",row.names = FALSE)
