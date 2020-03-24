@@ -15,8 +15,8 @@ wd <- "~/Desktop/SCCWRP/Metagenomics/"
 setwd(wd)
 
 #Read in metagenomic count tables and format them as presence/absence tables.
-communityInputRawPlate1 <- read.table("rcbLP1TableWithTaxonomy.txt", header=T, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
-communityInputRawPlate2 <- read.table("rcbLP2TableWithTaxonomy.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=F, encoding = "UTF-8")
+communityInputRawPlate1 <- read.table("rbcLP1TableWithTaxonomy.txt", header=T, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
+communityInputRawPlate2 <- read.table("rbcLP2TableWithTaxonomy.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=F, encoding = "UTF-8")
 #Remove spaces from column names for the count tables.
 communityInputRawPlate1 <- dplyr::rename(communityInputRawPlate1, OTUID = `OTU ID`)
 communityInputRawPlate2 <- dplyr::rename(communityInputRawPlate2, OTUID = `OTU ID`)
@@ -32,9 +32,14 @@ uniqueOTUs$FullTaxonomy <- uniqueOTUs$ConsensusLineage
 uniqueOTUs <- suppressWarnings(separate(uniqueOTUs,'ConsensusLineage',c("Rank1", "Rank2","Rank3","Rank4","Rank5","Rank6","Rank7"),sep=";", extra="drop"))
 uniqueOTUs$Rank7 <- trimws(uniqueOTUs$Rank7,which="left") #Remove starting blank space from genus names
 rankList <- grep("Rank",colnames(uniqueOTUs),value=T)
-#Read in taxonomically organized 16SV4a reads generated using this script:
-# https://github.com/levisimons/SCCWRP/blob/master/ZetaMetagenomicsrbcL.R
+#Read in taxonomically organized rbcL reads generated using this script:
+# https://github.com/levisimons/SCCWRP/blob/master/rbcLTaxonomyGenerator.R
 uniqueDiatoms <- read.table("DiatomTaxonomiesrbcL.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
+
+##
+#uniqueAlgae <- read.table("AlgaeTaxonomies18SV9.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
+#uniqueAlgae <- uniqueAlgae[uniqueAlgae$species %in% na.omit(unique(uniqueDiatoms$species)),]
+##
 
 #Create a merged metagenomic count table.
 communityInput <- dplyr::left_join(uniqueDiatoms,communityInputRawPlate1,by="OTUID")
@@ -45,7 +50,7 @@ colnames(communityInput) <- trimws(colnames(communityInput),which="both")
 #Choose a taxonomic level to group count data by.
 #Levels are Domain, Kingdom, Phylum, Class, Order, Family, GenusSpecies, OTUID
 taxonomicLevels <- colnames(communityInput[,grep("^[A-Za-z]", colnames(communityInput))])
-taxonomicLevel <- c("genus") #Choose a taxonomic level to aggregate count data on.
+taxonomicLevel <- c("order") #Choose a taxonomic level to aggregate count data on.
 taxonomicIgnore <- taxonomicLevels[taxonomicLevels != taxonomicLevel]
 ignoreColumns <- c(rankList,taxonomicIgnore)
 
@@ -157,7 +162,7 @@ for(j in 1:100){
   for(i in unique(metadata$LUBand)){
     #Subset by land use band.
     tmp <- metadata[metadata$LUBand==i,]
-    #Randomly subsample 10 samples from each cluster by land use grouping.
+    #Randomly subsample sample_Num samples from each cluster by land use grouping.
     metadataSubset <- tmp[sample(nrow(tmp),sample_Num),]
     #Reorder community data set columns so that their sample number order increases from left to right.
     #This will match the order of the metadata data frame where sample number order increases going down.
@@ -208,11 +213,11 @@ indx <- sapply(zetaAnalysis, is.factor)
 zetaAnalysis[indx] <- lapply(zetaAnalysis[indx], function(x) as.numeric(as.character(x)))
 zetaAnalysis <- do.call(data.frame,lapply(zetaAnalysis, function(x) replace(x, is.infinite(x),NA)))
 #Save zeta diversity analysis for a given taxonomic level.
-write.table(zetaAnalysis,paste("zetaAnalysis16SV4a",taxonomicLevel,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
+write.table(zetaAnalysis,paste("zetaAnalysisrbcL",taxonomicLevel,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
 #
 
 ##To run locally.
-zetaAnalysis <- read.table(paste("zetaAnalysis16SV4a",taxonomicLevel,".txt",sep=""), header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
+zetaAnalysis <- read.table(paste("zetaAnalysisrbcL",taxonomicLevel,".txt",sep=""), header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
 
 zetaModel <- lm(meanCSCI~zeta_1+zeta_2+zeta_N,data=zetaAnalysis)
 plot(zetaModel$model$meanCSCI,zetaModel$fitted.values)
@@ -223,11 +228,12 @@ layout(matrix(c(1,2,3,4),2,2)) # optional 4 graphs/page
 plot(zetaModel)
 
 # Assessing R2 shrinkage using 10-Fold Cross-Validation 
-require(bootstrap)
+#require(bootstrap)
 require(caret)
 set.seed(1)
 train.control <- trainControl(method="repeatedcv",number=10,repeats=10)
 CSCImodel <- train(meanCSCI~zeta_1+zeta_2+zeta_N,data=zetaAnalysis,method="lm",trControl=train.control)
+print(cor.test(zetaModel$model$meanCSCI,zetaModel$fitted.values))
 print(CSCImodel)
 
 #Comparing mean and modeled CSCI versus environmental parameters
@@ -267,8 +273,8 @@ zetaDecay <- Zeta.decline.ex(data.spec,orders=1:zetaMax,rescale=TRUE,plot=TRUE)
 
 #Compare community assembly profiles.
 require(IDPmisc)
-mean(NaRV.omit(zetaAnalysis$PLAIC))
 mean(NaRV.omit(zetaAnalysis$ExpAIC))
+mean(NaRV.omit(zetaAnalysis$PLAIC))
 t.test(NaRV.omit(zetaAnalysis$PLAIC),NaRV.omit(zetaAnalysis$ExpAIC),alternative="two.sided")
 
 #Zeta.varpart returns a data frame with one column containing the variation explained by each component 
