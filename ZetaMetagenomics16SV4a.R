@@ -9,9 +9,11 @@ require(stringr)
 require(tidyr)
 require(naniar)
 require(taxize)
+require(relaimpo)
 
+wd <- "/staging/sn1/alsimons/SCCWRP"
 #wd <- "/home/cmb-07/sn1/alsimons/SCCWRP"
-wd <- "~/Desktop/SCCWRP/Metagenomics/"
+#wd <- "~/Desktop/SCCWRP/Metagenomics/"
 setwd(wd)
 
 #Read in metagenomic count tables and format them as presence/absence tables.
@@ -70,7 +72,7 @@ colnames(communityInput) <- trimws(colnames(communityInput),which="both")
 #Choose a taxonomic level to group count data by.
 #Levels are Domain, Kingdom, Phylum, Class, Order, Family, GenusSpecies, OTUID
 taxonomicLevels <- colnames(communityInput[,grep("^[A-Za-z]", colnames(communityInput))])
-taxonomicLevel <- c("class") #Choose a taxonomic level to aggregate count data on.
+taxonomicLevel <- c("order") #Choose a taxonomic level to aggregate count data on.
 taxonomicIgnore <- taxonomicLevels[taxonomicLevels != taxonomicLevel]
 ignoreColumns <- c(rankList,taxonomicIgnore)
 
@@ -92,14 +94,16 @@ communityInputSummarized[is.na(communityInputSummarized)] <- 0
 #Keep only if at least three reads are present.
 communityInputSummarized[communityInputSummarized <= 2] <- 0
 communityInputSummarized[communityInputSummarized > 2] <- 1
+#Remove empty rows
+#communityInputSummarized <- communityInputSummarized[rowSums(communityInputSummarized[, -1] > 0) != 0, ] 
 
 #Calculte taxonomic richness by sample.
-communityRichness <- as.data.frame(colSums(communityInputSummarized))
+communityRichness <- as.data.frame(colSums(communityInputSummarized,na.rm=TRUE))
 communityRichness$SampleNum <- as.numeric(rownames(communityRichness))
 colnames(communityRichness) <- c("Richness","SampleNum")
 
 #Calculate taxa prevalence
-communityPrevalence <- as.data.frame(rowSums(communityInputSummarized))
+communityPrevalence <- as.data.frame(rowSums(communityInputSummarized,na.rm=TRUE))
 communityPrevalence$Taxa <- row.names(communityPrevalence)
 colnames(communityPrevalence) <- c("Prevalence","Taxa")
 
@@ -253,6 +257,7 @@ require(caret)
 set.seed(1)
 train.control <- trainControl(method="repeatedcv",number=10,repeats=10)
 CSCImodel <- train(meanCSCI~zeta_1+zeta_2+zeta_N,data=zetaAnalysis,method="lm",trControl=train.control)
+print(cor.test(zetaModel$model$meanCSCI,zetaModel$fitted.values))
 print(CSCImodel)
 
 #Comparing mean and modeled CSCI versus environmental parameters
@@ -292,8 +297,10 @@ zetaDecay <- Zeta.decline.ex(data.spec,orders=1:zetaMax,rescale=TRUE,plot=TRUE)
 
 #Compare community assembly profiles.
 require(IDPmisc)
-mean(NaRV.omit(zetaAnalysis$PLAIC))
 mean(NaRV.omit(zetaAnalysis$ExpAIC))
+mean(NaRV.omit(zetaAnalysis$PLAIC))
+print(paste("PLAIC:",mean(NaRV.omit(zetaAnalysis$PLAIC))))
+print(paste("ExpAIC:",mean(NaRV.omit(zetaAnalysis$ExpAIC))))
 t.test(NaRV.omit(zetaAnalysis$PLAIC),NaRV.omit(zetaAnalysis$ExpAIC),alternative="two.sided")
 
 #Zeta.varpart returns a data frame with one column containing the variation explained by each component 
