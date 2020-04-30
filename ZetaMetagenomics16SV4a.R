@@ -13,7 +13,7 @@ require(relaimpo)
 
 wd <- "/staging/sn1/alsimons/SCCWRP"
 #wd <- "/home/cmb-07/sn1/alsimons/SCCWRP"
-#wd <- "~/Desktop/SCCWRP/Metagenomics/"
+wd <- "~/Desktop/SCCWRP/Metagenomics/"
 setwd(wd)
 
 #Read in metagenomic count tables and format them as presence/absence tables.
@@ -72,7 +72,7 @@ colnames(communityInput) <- trimws(colnames(communityInput),which="both")
 #Choose a taxonomic level to group count data by.
 #Levels are Domain, Kingdom, Phylum, Class, Order, Family, GenusSpecies, OTUID
 taxonomicLevels <- colnames(communityInput[,grep("^[A-Za-z]", colnames(communityInput))])
-taxonomicLevel <- c("order") #Choose a taxonomic level to aggregate count data on.
+taxonomicLevel <- c("OTUID") #Choose a taxonomic level to aggregate count data on.
 taxonomicIgnore <- taxonomicLevels[taxonomicLevels != taxonomicLevel]
 ignoreColumns <- c(rankList,taxonomicIgnore)
 
@@ -285,6 +285,19 @@ zetaPlot+xlab("Mean LU")+ylab("PLExp")+scale_color_gradientn("Mean N",colours = 
 #Check for correlation patterns between zeta diversity and environmental parameters.
 require("PerformanceAnalytics")
 chart.Correlation(zetaAnalysis[,c("modeledCSCI","meanCSCI","meanLU","meanAL","meanDist","zeta_1","zeta_2","zeta_3","zeta_4","zeta_N")], histogram=TRUE, method="pearson")
+
+#Correlation plots of zeta diversity and environmental parameters.
+require(Hmisc)
+require(corrplot)
+communityType <- "prokaryotes"
+taxonomicLevel <- "order"
+zetaAnalysis <- read.table(paste("zetaAnalysis16SV4a",taxonomicLevel,".txt",sep=""), header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
+zetaCor <- zetaAnalysis[,c("meanLU","meanAL","meanDist","zeta_1","zeta_2","zeta_N")]
+zetaCor <- cor(as.matrix(zetaCor))
+colnames(zetaCor) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]")
+rownames(zetaCor) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]")
+corrplot(zetaCor, type="upper", tl.col="black", tl.srt=45, tl.cex=1.3, order="original", sig.level=0.05, insig="blank", title=paste("16S-V4",communityType,"\n aggregated to",taxonomicLevel),mar=c(0,0,3,0))
+
 
 #Calculate how much zeta diversity of a particular order decays with distance
 data.spec <- communityInputSummarized[,as.character(metadata$SampleNum)]
