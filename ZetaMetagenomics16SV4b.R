@@ -296,6 +296,19 @@ rownames(zetaCor) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":
 res1 <- cor.mtest(zetaCor, conf.level = .95)
 corrplot(zetaCor, p.mat = res1$p, diag = FALSE, type="upper", insig = "label_sig", sig.level = c(.0001, .001, .01, .05), pch.cex = 2, pch.col = "white", tl.col="black", tl.srt=45, tl.cex=1.3, order="original", title=paste("16S 515F-926R",communityType,"\n aggregated to",taxonomicLevel),mar=c(0,0,3,0))
 
+#Correlation plots of mean and modeled CSCI scores against environmental parameters.
+communityType <- "prokaryotes"
+taxonomicLevel <- "order"
+zetaAnalysis <- read.table(paste("zetaAnalysis16SV4b",taxonomicLevel,".txt",sep=""), header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
+zetaModel <- lm(meanCSCI~zeta_1+zeta_2+zeta_N,data=zetaAnalysis)
+zetaAnalysis$modeledCSCI <- zetaModel$fitted.values
+zetaCor <- zetaAnalysis[,c("meanLU","meanAL","meanDist","meanCSCI","modeledCSCI")]
+zetaCor <- cor(as.matrix(zetaCor))
+colnames(zetaCor) <- c("Land Use","Altitude","Distance","Mean CSCI","Mean Modeled Index")
+rownames(zetaCor) <- c("Land Use","Altitude","Distance","Mean CSCI","Mean Modeled Index")
+res1 <- cor.mtest(zetaCor, conf.level = .95)
+corrplot(zetaCor, p.mat = res1$p, diag = FALSE, type="upper", insig = "label_sig", sig.level = c(.0001, .001, .01, .05), pch.cex = 2, pch.col = "white", tl.col="black", tl.srt=45, tl.cex=1.3, order="original", title=paste("16S 515F-926R",communityType,"\n aggregated to",taxonomicLevel),mar=c(0,0,3,0))
+
 #Calculate how much zeta diversity of a particular order decays with distance
 data.spec <- communityInputSummarized[,as.character(metadata$SampleNum)]
 #Create a species/site matrix for use in the zeta diversity functions.
