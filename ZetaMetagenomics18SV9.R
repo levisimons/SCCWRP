@@ -21,7 +21,7 @@ setwd(wd)
 #"diatoms for diatom communities.
 #"algae" for algal communities.
 #"BMIs" for BMI communities
-communityType <- "BMIs"
+communityType <- "algae"
 
 #Read in metagenomic count tables and format them as presence/absence tables.
 communityInputRawPlate1 <- read.table("18SV9P1TableWithTaxonomy.txt", header=T, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
@@ -81,7 +81,7 @@ communityInput <- communityInput[, -which(names(communityInput)  %in% c("DNAStan
 #Choose a taxonomic level to group count data by.
 #Levels are domain, kingdom, phylum, class, order, family, genus, species, OTUID
 taxonomicLevels <- colnames(communityInput[,grep("^[A-Za-z]", colnames(communityInput))])
-taxonomicLevel <- c("order") #Choose a taxonomic level to aggregate count data on.
+taxonomicLevel <- c("family") #Choose a taxonomic level to aggregate count data on.
 taxonomicIgnore <- taxonomicLevels[taxonomicLevels != taxonomicLevel]
 
 #Remove unnecessary sample columns.
@@ -99,7 +99,7 @@ if(taxonomicLevel!="OTUID"){
 rownames(communityInputSummarized) <- Filter(is.character, communityInputSummarized)[,1]
 communityInputSummarized[,which(colnames(communityInputSummarized)==taxonomicLevel)] <- NULL
 communityInputSummarized[is.na(communityInputSummarized)] <- 0
-#Keep only if at least three reads are present.
+#Keep only if at least two reads are present.
 communityInputSummarized[communityInputSummarized <= 2] <- 0
 communityInputSummarized[communityInputSummarized > 2] <- 1
 
@@ -291,7 +291,17 @@ zetaPlot+xlab("Mean LU")+ylab("Zeta_1")+scale_color_gradientn("Mean N",colours =
 require("PerformanceAnalytics")
 chart.Correlation(zetaAnalysis[,c("modeledCSCI","meanCSCI","meanLU","meanAL","meanDist","zeta_1","zeta_2","zeta_3","zeta_4","zeta_N")], histogram=TRUE, method="pearson")
 
-plot(zetaAnalysis[zetaAnalysis$meanDist<=400000,"meanCSCI"],zetaAnalysis[zetaAnalysis$meanDist<=400000,"modeledCSCI"])
+#Correlation plots of zeta diversity and environmental parameters.
+require(Hmisc)
+require(corrplot)
+communityType <- "BMIs"
+taxonomicLevel <- "order"
+zetaAnalysis <- read.table(paste("zetaAnalysis18SV9",communityType,taxonomicLevel,".txt",sep=""), header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
+zetaCor <- zetaAnalysis[,c("meanLU","meanAL","meanDist","zeta_1","zeta_2","zeta_N")]
+zetaCor <- cor(as.matrix(zetaCor))
+colnames(zetaCor) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]")
+rownames(zetaCor) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]")
+corrplot(zetaCor, type="upper", tl.col="black", tl.srt=45, tl.cex=1.3, order="original", sig.level=0.05, insig="blank", title=paste("18-V9",communityType,"\n aggregated to",taxonomicLevel),mar=c(0,0,3,0))
 
 #Calculate how much zeta diversity of a particular order decays with distance
 data.spec <- communityInputSummarized[,as.character(metadata$SampleNum)]
