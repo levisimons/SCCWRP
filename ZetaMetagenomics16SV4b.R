@@ -293,7 +293,8 @@ zetaCor <- zetaAnalysis[,c("meanLU","meanAL","meanDist","zeta_1","zeta_2","zeta_
 zetaCor <- cor(as.matrix(zetaCor))
 colnames(zetaCor) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]")
 rownames(zetaCor) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]")
-corrplot(zetaCor, type="upper", tl.col="black", tl.srt=45, tl.cex=1.3, order="original", sig.level=0.05, insig="blank", title=paste("16S 515F-926R",communityType,"\n aggregated to",taxonomicLevel),mar=c(0,0,3,0))
+res1 <- cor.mtest(zetaCor, conf.level = .95)
+corrplot(zetaCor, p.mat = res1$p, diag = FALSE, type="upper", insig = "label_sig", sig.level = c(.0001, .001, .01, .05), pch.cex = 2, pch.col = "white", tl.col="black", tl.srt=45, tl.cex=1.3, order="original", title=paste("16S 515F-926R",communityType,"\n aggregated to",taxonomicLevel),mar=c(0,0,3,0))
 
 #Calculate how much zeta diversity of a particular order decays with distance
 data.spec <- communityInputSummarized[,as.character(metadata$SampleNum)]
