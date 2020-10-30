@@ -146,6 +146,7 @@ write.table(zetaAnalysis,paste("zetaAnalysisMorphologicalAlgae",taxonomicLevel,"
 #
 
 ##To run locally.
+taxonomicLevel <- "order"
 zetaAnalysis <- read.table(paste("zetaAnalysisMorphologicalAlgae",taxonomicLevel,".txt",sep=""), header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
 
 zetaModel <- lm(meanASCI~zeta_1+zeta_2+zeta_N,data=zetaAnalysis)
