@@ -8,8 +8,29 @@ require(relaimpo)
 wd <- "/project/noujdine_61/alsimons/SCCWRP"
 setwd(wd)
 
-#Read in morphological algae community data.
+#Read in morphological stream community data describing all algae (soft algae and diatoms)
+#and format them as presence/absence tables.
 AlgalInput <- read.table("AlgTaxa.csv", header=T, sep=",",as.is=T,skip=0,fill=T,quote="\"",check.names=F,encoding = "UTF-8")
+#Standarize date format.
+AlgalInput$sampledate <- as.Date(AlgalInput$sampledate,format="%Y-%m-%d")
+AlgalInput$sampledate <- format(AlgalInput$sampledate,format="%m/%d/%y")
+#Create unique sample identifier.
+AlgalInput$UniqueID <- paste(AlgalInput$stationcode,AlgalInput$sampledate)
+#Subset columns of interest
+AlgalInput <- AlgalInput[,c("stationcode","sampledate","replicate","UniqueID","finalid")]
+
+#Add in additional algal morphology data.
+AlgalInput2 <- read.table("AlgTaxa2.csv", header=T, sep=",",as.is=T,skip=0,fill=T,quote="\"",check.names=F,encoding = "UTF-8")
+#Standarize date format.
+AlgalInput2$sampledate <- as.Date(AlgalInput2$sampledate,format="%m/%d/%y")
+AlgalInput2$sampledate <- format(AlgalInput2$sampledate,format="%m/%d/%y")
+#Create unique sample identifier.
+AlgalInput2$UniqueID <- paste(AlgalInput2$stationcode,AlgalInput2$sampledate)
+#Subset columns of interest
+AlgalInput2 <- AlgalInput2[,c("stationcode","sampledate","replicate","UniqueID","finalid")]
+
+#Create merged algal morphology data set.
+AlgalInput <- rbind(AlgalInput,AlgalInput2)
 
 #Generated here: https://github.com/nuzhdinlab/SCCWRP/blob/master/MorphologicalTaxonomyGenerator.R
 uniqueAlgae <- read.table("AlgalTaxonomiesMorphological.txt", header=T, sep="\t",as.is=T,skip=0,fill=T,quote="\"",check.names=F,encoding = "UTF-8")
@@ -18,13 +39,13 @@ uniqueAlgae <- read.table("AlgalTaxonomiesMorphological.txt", header=T, sep="\t"
 communityInput <- dplyr::left_join(uniqueAlgae,AlgalInput[,c("stationcode","sampledate","finalid")],by=c("LeafTaxa"="finalid"))
 
 #Standarize date format.
-communityInput$sampledate <- as.Date(communityInput$sampledate,format="%Y-%m-%d")
-communityInput$sampledate <- format(communityInput$sampledate,format="%m/%d/%y")
+#communityInput$sampledate <- as.Date(communityInput$sampledate,format="%Y-%m-%d")
+#communityInput$sampledate <- format(communityInput$sampledate,format="%m/%d/%y")
 
 #Choose a taxonomic level to group count data by.
 #Levels are domain, kingdom, phylum, class, order, family, genus, species, OTUID
 taxonomicLevels <- colnames(uniqueAlgae[,grep("^[A-Za-z]", colnames(uniqueAlgae))])
-taxonomicLevel <- c("phylum") #Choose a taxonomic level to aggregate count data on.
+taxonomicLevel <- c("order") #Choose a taxonomic level to aggregate count data on.
 taxonomicIgnore <- taxonomicLevels[taxonomicLevels != taxonomicLevel]
 
 #Read in table linking sample IDs in the metagenomic table to sample station codes.
