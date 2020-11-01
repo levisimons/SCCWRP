@@ -8,8 +8,29 @@ require(relaimpo)
 wd <- "/project/noujdine_61/alsimons/SCCWRP"
 setwd(wd)
 
-#Read in morphological algae community data.
+#Read in morphological stream community data describing all algae (soft algae and diatoms)
+#and format them as presence/absence tables.
 AlgalInput <- read.table("AlgTaxa.csv", header=T, sep=",",as.is=T,skip=0,fill=T,quote="\"",check.names=F,encoding = "UTF-8")
+#Standarize date format.
+AlgalInput$sampledate <- as.Date(AlgalInput$sampledate,format="%Y-%m-%d")
+AlgalInput$sampledate <- format(AlgalInput$sampledate,format="%m/%d/%y")
+#Create unique sample identifier.
+AlgalInput$UniqueID <- paste(AlgalInput$stationcode,AlgalInput$sampledate)
+#Subset columns of interest
+AlgalInput <- AlgalInput[,c("stationcode","sampledate","replicate","UniqueID","finalid")]
+
+#Add in additional algal morphology data.
+AlgalInput2 <- read.table("AlgTaxa2.csv", header=T, sep=",",as.is=T,skip=0,fill=T,quote="\"",check.names=F,encoding = "UTF-8")
+#Standarize date format.
+AlgalInput2$sampledate <- as.Date(AlgalInput2$sampledate,format="%m/%d/%y")
+AlgalInput2$sampledate <- format(AlgalInput2$sampledate,format="%m/%d/%y")
+#Create unique sample identifier.
+AlgalInput2$UniqueID <- paste(AlgalInput2$stationcode,AlgalInput2$sampledate)
+#Subset columns of interest
+AlgalInput2 <- AlgalInput2[,c("stationcode","sampledate","replicate","UniqueID","finalid")]
+
+#Create merged algal morphology data set.
+AlgalInput <- rbind(AlgalInput,AlgalInput2)
 
 #Generated here: https://github.com/nuzhdinlab/SCCWRP/blob/master/MorphologicalTaxonomyGenerator.R
 uniqueAlgae <- read.table("AlgalTaxonomiesMorphological.txt", header=T, sep="\t",as.is=T,skip=0,fill=T,quote="\"",check.names=F,encoding = "UTF-8")
@@ -21,8 +42,8 @@ uniqueAlgae <- uniqueAlgae[uniqueAlgae$class=="Bacillariophyceae",]
 communityInput <- dplyr::left_join(uniqueAlgae,AlgalInput[,c("stationcode","sampledate","finalid")],by=c("LeafTaxa"="finalid"))
 
 #Standarize date format.
-communityInput$sampledate <- as.Date(communityInput$sampledate,format="%Y-%m-%d")
-communityInput$sampledate <- format(communityInput$sampledate,format="%m/%d/%y")
+#communityInput$sampledate <- as.Date(communityInput$sampledate,format="%Y-%m-%d")
+#communityInput$sampledate <- format(communityInput$sampledate,format="%m/%d/%y")
 
 #Choose a taxonomic level to group count data by.
 #Levels are domain, kingdom, phylum, class, order, family, genus, species, OTUID
@@ -98,8 +119,8 @@ metadata$LU <- metadata$ag_2011_5k+metadata$urban_2011_5k+metadata$code_21_2011_
 metadata$LUBand <- case_when(metadata$LU <= 3 ~ "1", metadata$LU > 3 & metadata$LU <= 15 ~ "2", metadata$LU > 15 ~ "3", TRUE ~ as.character(metadata$LU))
 
 set.seed(1)
-sample_Num <- 15
-zetaMax <- 10
+sample_Num <- 12
+zetaMax <- 8
 zetaAnalysis <- data.frame()
 for(j in 1:100){
   for(i in unique(metadata$LUBand)){
@@ -170,7 +191,7 @@ ASCImodel <- train(meanASCI~zeta_1+zeta_2+zeta_N,data=zetaAnalysis,method="lm",t
 print(cor.test(zetaModel$model$meanASCI,zetaModel$fitted.values))
 print(ASCImodel)
 
-#Comparing mean and modeled CSCI versus environmental parameters
+#Comparing mean and modeled ASCI versus environmental parameters
 zetaVarModel1 <- lm(modeledASCI~meanAL+meanLU+meanDist,data=zetaAnalysis)
 summary(zetaVarModel1)
 calc.relimp(zetaVarModel1)
@@ -192,8 +213,8 @@ zetaCor <- zetaAnalysis[,c("meanLU","meanAL","meanDist","zeta_1","zeta_2","zeta_
 zetaCor <- rcorr(as.matrix(zetaCor),type="pearson")
 corr <- zetaCor$r
 p.mat <- zetaCor$P
-colnames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]","Mean ASCI","Modeled ASCI")
-rownames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]","Mean ASCI","Modeled ASCI")
+colnames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[8]","Mean ASCI","Modeled ASCI")
+rownames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[8]","Mean ASCI","Modeled ASCI")
 par(xpd=TRUE)
 corrplot(corr = corr, p.mat = p.mat, diag = FALSE, type="lower", sig.level = 0.0001, tl.col="black", tl.srt=45, tl.cex=1.3, order="original",mar=c(0,0,3,0), cl.align.text = "r")
 mtext(paste("Morphologically sorted",communityType,"aggregated to",taxonomicLevel), at=2.5, line=3, cex=1.3)
