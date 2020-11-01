@@ -116,8 +116,8 @@ metadata$LU <- metadata$ag_2011_5k+metadata$urban_2011_5k+metadata$code_21_2011_
 metadata$LUBand <- case_when(metadata$LU <= 3 ~ "1", metadata$LU > 3 & metadata$LU <= 15 ~ "2", metadata$LU > 15 ~ "3", TRUE ~ as.character(metadata$LU))
 
 set.seed(1)
-sample_Num <- 15
-zetaMax <- 10
+sample_Num <- 12
+zetaMax <- 8
 zetaAnalysis <- data.frame()
 for(j in 1:100){
   for(i in unique(metadata$LUBand)){
@@ -188,7 +188,7 @@ ASCImodel <- train(meanASCI~zeta_1+zeta_2+zeta_N,data=zetaAnalysis,method="lm",t
 print(cor.test(zetaModel$model$meanASCI,zetaModel$fitted.values))
 print(ASCImodel)
 
-#Comparing mean and modeled CSCI versus environmental parameters
+#Comparing mean and modeled ASCI versus environmental parameters
 zetaVarModel1 <- lm(modeledASCI~meanAL+meanLU+meanDist,data=zetaAnalysis)
 summary(zetaVarModel1)
 calc.relimp(zetaVarModel1)
@@ -210,8 +210,8 @@ zetaCor <- zetaAnalysis[,c("meanLU","meanAL","meanDist","zeta_1","zeta_2","zeta_
 zetaCor <- rcorr(as.matrix(zetaCor),type="pearson")
 corr <- zetaCor$r
 p.mat <- zetaCor$P
-colnames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]","Mean ASCI","Modeled ASCI")
-rownames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]","Mean ASCI","Modeled ASCI")
+colnames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[8]","Mean ASCI","Modeled ASCI")
+rownames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[8]","Mean ASCI","Modeled ASCI")
 par(xpd=TRUE)
 corrplot(corr = corr, p.mat = p.mat, diag = FALSE, type="lower", sig.level = 0.0001, tl.col="black", tl.srt=45, tl.cex=1.3, order="original",mar=c(0,0,3,0), cl.align.text = "r")
 mtext(paste("Morphologically sorted",communityType,"aggregated to",taxonomicLevel), at=2.5, line=3, cex=1.3)
