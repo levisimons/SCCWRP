@@ -45,7 +45,7 @@ communityInput <- dplyr::left_join(uniqueBMIs,BMIInput[,c("stationcode","sampled
 #Choose a taxonomic level to group count data by.
 #Levels are domain, kingdom, phylum, class, order, family, genus, species, OTUID
 taxonomicLevels <- colnames(uniqueBMIs[,grep("^[A-Za-z]", colnames(uniqueBMIs))])
-taxonomicLevel <- c("order") #Choose a taxonomic level to aggregate count data on.
+taxonomicLevel <- c("genus") #Choose a taxonomic level to aggregate count data on.
 taxonomicIgnore <- taxonomicLevels[taxonomicLevels != taxonomicLevel]
 
 #Read in table linking sample IDs in the metagenomic table to sample station codes.
@@ -99,7 +99,7 @@ CSCI$sampledate <- format(CSCI$sampledate,format="%m/%d/%y")
 CSCI$UniqueID <- paste(CSCI$stationcode,CSCI$sampledate)
 
 #Filter CSCI data frame to contain only samples shared between morphological and metagenomic methods.
-CSCI <- CSCI[CSCI$UniqueID %in% communityInput$UniqueID,]
+CSCI <- CSCI[CSCI$stationcode %in% communityInput$stationcode,]
 
 #Read in sample station metadata.
 metadata <- read.table("GIS.csv", header=T, sep=",",as.is=T,skip=0,fill=T,quote="\"",check.names=F,encoding = "UTF-8")
@@ -114,8 +114,8 @@ metadata$LU <- metadata$ag_2011_5k+metadata$urban_2011_5k+metadata$code_21_2011_
 metadata$LUBand <- case_when(metadata$LU <= 3 ~ "1", metadata$LU > 3 & metadata$LU <= 15 ~ "2", metadata$LU > 15 ~ "3", TRUE ~ as.character(metadata$LU))
 
 set.seed(1)
-sample_Num <- 15
-zetaMax <- 10
+sample_Num <- 12
+zetaMax <- 8
 zetaAnalysis <- data.frame()
 for(j in 1:100){
   for(i in unique(metadata$LUBand)){
@@ -208,8 +208,8 @@ zetaCor <- zetaAnalysis[,c("meanLU","meanAL","meanDist","zeta_1","zeta_2","zeta_
 zetaCor <- rcorr(as.matrix(zetaCor),type="pearson")
 corr <- zetaCor$r
 p.mat <- zetaCor$P
-colnames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]","Mean CSCI","Modeled CSCI")
-rownames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]","Mean CSCI","Modeled CSCI")
+colnames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[8]","Mean CSCI","Modeled CSCI")
+rownames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[8]","Mean CSCI","Modeled CSCI")
 par(xpd=TRUE)
 corrplot(corr = corr, p.mat = p.mat, diag = FALSE, type="lower", sig.level = 0.0001, tl.col="black", tl.srt=45, tl.cex=1.3, order="original",mar=c(0,0,3,0), cl.align.text = "r")
 mtext(paste("Morphologically sorted",communityType,"aggregated to",taxonomicLevel), at=2.5, line=3, cex=1.3)
