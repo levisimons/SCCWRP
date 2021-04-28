@@ -236,8 +236,8 @@ for(taxonomicLevel in taxonomicLevels){
   zetaCor <- rcorr(as.matrix(zetaCor),type="pearson")
   corr <- zetaCor$r
   p.mat <- zetaCor$P
-  colnames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]","Mean ASCI","Modeled ASCI")
-  rownames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]","Mean ASCI","Modeled ASCI")
+  colnames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]","Mean H_ASCI","Modeled H_ASCI")
+  rownames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]","Mean H_ASCI","Modeled H_ASCI")
   par(xpd=TRUE)
   png(paste("zetaAnalysisMorphologicalAlgae",taxonomicLevel,".png",sep=""),width=7,height=7,units="in",res=600)
   corrplot(corr = corr, p.mat = p.mat, diag = FALSE, type="lower", sig.level = 0.0001, tl.col="black", tl.srt=45, tl.cex=1.3, order="original",mar=c(0,0,3,0), cl.align.text = "r")
