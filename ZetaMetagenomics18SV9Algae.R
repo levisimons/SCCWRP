@@ -1,54 +1,64 @@
 rm(list=ls())
+require("plyr")
 require(dplyr)
 require(zetadiv)
+require(sp)
+require(rgdal)
 require(geosphere)
+require(stringr)
+require(tidyr)
+require(naniar)
+require(taxize)
+require(picante)
 require(relaimpo)
 
-wd <- "/project/noujdine_61/alsimons/SCCWRP"
-wd <- "~/Desktop/SCCWRP/MorphologicalBMIsAlgae/"
+wd <- "/home/cmb-07/sn1/alsimons/SCCWRP"
+wd <- "~/Desktop/SCCWRP/Metagenomics/"
 setwd(wd)
 
-#Read in morphological stream community data describing all algae (soft algae and diatoms)
-#and format them as presence/absence tables.
-AlgalInput <- read.table("AlgTaxa.csv", header=T, sep=",",as.is=T,skip=0,fill=T,quote="\"",check.names=F,encoding = "UTF-8")
-#Standarize date format.
-AlgalInput$sampledate <- as.Date(AlgalInput$sampledate,format="%Y-%m-%d")
-AlgalInput$sampledate <- format(AlgalInput$sampledate,format="%m/%d/%y")
-#Create unique sample identifier.
-AlgalInput$UniqueID <- paste(AlgalInput$stationcode,AlgalInput$sampledate)
-#Subset columns of interest
-AlgalInput <- AlgalInput[,c("stationcode","sampledate","replicate","UniqueID","finalid")]
+#Read in metagenomic count tables and format them as presence/absence tables.
+communityInputRawPlate1 <- read.table("18SV9P1TableWithTaxonomy.txt", header=T, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
+communityInputRawPlate2 <- read.table("18SV9P2TableWithTaxonomy.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=F, encoding = "UTF-8")
+#Remove spaces from column names for the count tables.
+communityInputRawPlate1 <- dplyr::rename(communityInputRawPlate1, OTUID = `OTU ID`)
+communityInputRawPlate2 <- dplyr::rename(communityInputRawPlate2, OTUID = `OTU ID`)
 
-#Add in additional algal morphology data.
-AlgalInput2 <- read.table("AlgTaxa2.csv", header=T, sep=",",as.is=T,skip=0,fill=T,quote="\"",check.names=F,encoding = "UTF-8")
-#Standarize date format.
-AlgalInput2$sampledate <- as.Date(AlgalInput2$sampledate,format="%m/%d/%y")
-AlgalInput2$sampledate <- format(AlgalInput2$sampledate,format="%m/%d/%y")
-#Create unique sample identifier.
-AlgalInput2$UniqueID <- paste(AlgalInput2$stationcode,AlgalInput2$sampledate)
-#Subset columns of interest
-AlgalInput2 <- AlgalInput2[,c("stationcode","sampledate","replicate","UniqueID","finalid")]
+#Get a list of unique OTU names from count tables and convert to a data frame.
+#uniqueOTUs <- as.data.frame(unique(c(communityInputRawPlate1$OTUID,communityInputRawPlate2$OTUID)))
+uniqueOTUs <- rbind(communityInputRawPlate1[,c("OTUID","ConsensusLineage")],communityInputRawPlate2[,c("OTUID","ConsensusLineage")])
+#colnames(uniqueOTUs) <- c("OTUID")
+uniqueOTUs$OTUID <- as.character(uniqueOTUs$OTUID)
+#Remove superfluous strings from taxonomic labels.
+uniqueOTUs$ConsensusLineage <- gsub("D_[0-9]+__","",uniqueOTUs$ConsensusLineage)
+uniqueOTUs$ConsensusLineage <- gsub("g__","",uniqueOTUs$ConsensusLineage)
+#Split OTU names into Domain through Genus+Species.
+uniqueOTUs$FullTaxonomy <- uniqueOTUs$ConsensusLineage
+uniqueOTUs <- suppressWarnings(separate(uniqueOTUs,'ConsensusLineage',c("Rank1", "Rank2","Rank3","Rank4","Rank5","Rank6","Rank7and8"),sep=";", extra="drop"))
+uniqueOTUs$Rank7and8 <- trimws(uniqueOTUs$Rank7and8,which="left") #Remove starting blank space from genus names
+uniqueOTUs <- suppressWarnings(separate(uniqueOTUs,'Rank7and8',c("Rank7","Rank8"),sep=" ", extra="warn"))
+uniqueOTUs <- uniqueOTUs[!duplicated(uniqueOTUs$OTUID),]
+#Filter out ambiguous taxonomies
+uniqueOTUs <- uniqueOTUs[uniqueOTUs$Rank1!="Unassigned" & uniqueOTUs$Rank1!="Ambiguous_taxa",]
+ambiguousList <- c("Incertae Sedis","metagenome","sp.","environmental","eukaryote","uncultured","soil","Ambiguous_taxa","group","cf.","aff.","gen.","marine","cf","unidentified","Uncultured","invertebrate")
+ambiguousList <- as.list(ambiguousList)
+uniqueOTUs <- data.frame(lapply(uniqueOTUs, trimws), stringsAsFactors = FALSE)
+uniqueOTUs <- replace_with_na_all(data=uniqueOTUs,condition=~.x %in% as.list(ambiguousList))
 
-#Create merged algal morphology data set.
-AlgalInput <- rbind(AlgalInput,AlgalInput2)
+#Subset 18Sv9 OTU table to only contain taxonomic algal data from SCCWRP
+#Generated here: https://github.com/levisimons/SCCWRP/blob/master/SCCWRPTaxonomyGenerator.R
+uniqueAlgae <- read.table("AlgaeTaxonomies18SV9.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,quote="",check.names=FALSE, encoding = "UTF-8")
 
-#Generated here: https://github.com/nuzhdinlab/SCCWRP/blob/master/MorphologicalTaxonomyGenerator.R
-uniqueAlgae <- read.table("AlgalTaxonomiesMorphological.txt", header=T, sep="\t",as.is=T,skip=0,fill=T,quote="\"",check.names=F,encoding = "UTF-8")
-
-#Create merged data frame with sample data and full taxonomic information.
-communityInput <- dplyr::left_join(uniqueAlgae,AlgalInput[,c("stationcode","sampledate","finalid")],by=c("LeafTaxa"="finalid"))
+#Merge algal community data.
+communityInput <- dplyr::left_join(uniqueAlgae,communityInputRawPlate1,by="OTUID")
+communityInput <- dplyr::left_join(communityInput,communityInputRawPlate2,by="OTUID")
+#Remove unnecessary sample columns.
+communityInput <- communityInput[, -which(names(communityInput)  %in% c("DNAStandard","Ext-Blank1","Ext-Blank2","FB","NTC","SNAStandardII","ConsensusLineage.y","DNAstandardI","DNAstandardII","ConsensusLineage.x","202","230.x","230.y","FullTaxonomy"))]
 
 #Choose a taxonomic level to group count data by.
 #Levels are domain, kingdom, phylum, class, order, family, genus, species, OTUID
-taxonomicLevels <- colnames(uniqueAlgae[,grep("^[A-Za-z]", colnames(uniqueAlgae))])
-taxonomicLevel <- c("order") #Choose a taxonomic level to aggregate count data on.
+taxonomicLevels <- colnames(communityInput[,grep("^[A-Za-z]", colnames(communityInput))])
+taxonomicLevel <- c("family") #Choose a taxonomic level to aggregate count data on.
 taxonomicIgnore <- taxonomicLevels[taxonomicLevels != taxonomicLevel]
-
-#Remove unnecessary sample columns.
-communityInput$UniqueID <- paste(communityInput$stationcode,communityInput$sampledate)
-communityInput <- communityInput[,c("UniqueID",taxonomicLevel)]
-#Remove empty taxonomic rows.
-communityInput <- communityInput[!is.na(communityInput[,taxonomicLevel]),]
 
 #Read in table linking sample IDs in the metagenomic table to sample station codes.
 sampleIDs <- read.table("SampleStationCodesID.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
@@ -101,7 +111,7 @@ ASCI$sampledate <- as.Date(ASCI$sampledate,format="%Y-%m-%d")
 ASCI$sampledate <- format(ASCI$sampledate,format="%m/%d/%y")
 ASCI$UniqueID <- paste(ASCI$stationcode,ASCI$sampledate)
 #Only keep ASCI results for all algae.
-ASCI <- ASCI[ASCI$assemblage=="Diatom" & ASCI$metric=="ASCI",]
+ASCI <- ASCI[ASCI$assemblage=="Hybrid" & ASCI$metric=="ASCI",]
 
 #Aggregate CSCI scores by sample over replicates.
 ASCI <- ASCI[,c("UniqueID","result")]
@@ -115,30 +125,41 @@ metadata <- dplyr::left_join(metadata,ASCI,by="UniqueID")
 metadata$LUBand <- as.numeric(case_when(metadata$LU <= 3 ~ "1", metadata$LU > 3 & metadata$LU <= 15 ~ "2", metadata$LU > 15 ~ "3", TRUE ~ as.character(metadata$LU)))
 #Remove samples with missing metadata.
 metadata <- metadata[!is.na(metadata$LUBand) & !is.na(metadata$csci) & !is.na(metadata$asci),]
+#Remove duplicate metadata rows.
 metadata$SampleNum <- NULL
 metadata <- metadata[!duplicated(metadata),]
-rownames(metadata) <- metadata$UniqueID
 
-#Only keep community data for samples which have both morphological and metagenomic data.
-communityInput <- communityInput[communityInput$UniqueID %in% metadata$UniqueID,]
-
-#Collapse duplicate rows so each row is a unique pairing of sample by taxa.
-communityInput <- communityInput[!duplicated(communityInput),]
-
-#Convert community data to a presence/absence data frame.
-#Rows for sample IDs and columns for taxa aggregated to a particular level.
-communityInputSummarized <- data.frame(matrix(nrow=length(unique(communityInput[,"UniqueID"])),ncol=length(unique(communityInput[,taxonomicLevel]))))
-colnames(communityInputSummarized) <- unique(communityInput[,taxonomicLevel])
-rownames(communityInputSummarized) <- unique(communityInput[,"UniqueID"])
-for(sample in unique(communityInput[,"UniqueID"])){
-  communityInputSummarized[sample,] <- as.numeric(unique(communityInput[,taxonomicLevel]) %in% communityInput[communityInput$UniqueID==sample,taxonomicLevel])
+#Remove unnecessary sample columns.
+communityInput <- communityInput[, -which(names(communityInput)  %in% taxonomicIgnore)]
+communityInput <- communityInput[!is.na(communityInput[,colnames(communityInput)==taxonomicLevel]),]
+#Aggregate a taxonomic level to aggregate count data on.
+communityInput[is.na(communityInput)] <- 0
+if(taxonomicLevel=="OTUID"){
+  communityInputSummarized <- as.data.frame(communityInput)
 }
-#Ensure the rows in the site/species data frame include all the sites found with metadata.
-un1 <- union(rownames(communityInputSummarized),rownames(metadata))
-tmp1 <- as.data.frame(matrix(0,ncol=ncol(communityInputSummarized),nrow=length(un1),dimnames=list(un1,names(communityInputSummarized))))
-tmp2 <- tmp1
-tmp1[rownames(tmp1) %in% rownames(communityInputSummarized),] <- communityInputSummarized
-communityInputSummarized <- tmp1
+if(taxonomicLevel!="OTUID"){
+  communityInputSummarized <- as.data.frame(aggregate(formula(paste0(". ~ ",taxonomicLevel)),communityInput,sum,na.action = na.omit))
+}
+#Move taxonomic names onto data frame row names.
+rownames(communityInputSummarized) <- Filter(is.character, communityInputSummarized)[,1]
+communityInputSummarized[,which(colnames(communityInputSummarized)==taxonomicLevel)] <- NULL
+#Determine the average number of reads per sample for a given unique site/location.
+communityInputSummarized <- as.data.frame(t(communityInputSummarized))
+communityInputSummarized$SampleNum <- as.numeric(rownames(communityInputSummarized))
+communityInputSummarized <- dplyr::left_join(communityInputSummarized,sampleIDs,by=c("SampleNum"))
+communityInputSummarized$SampleNum <- NULL
+communityInputSummarized <- as.data.frame(aggregate(formula(paste0(". ~ UniqueID")),communityInputSummarized,mean,na.action = na.omit))
+rownames(communityInputSummarized) <- communityInputSummarized$UniqueID
+communityInputSummarized$UniqueID <- NULL
+
+#Convert abundance to presence/absence.
+communityInputSummarized[is.na(communityInputSummarized)] <- 0
+#Keep only if at least two reads are present.
+communityInputSummarized[communityInputSummarized <= 2] <- 0
+communityInputSummarized[communityInputSummarized > 2] <- 1
+
+#Remove community entries with missing metadata.
+communityInputSummarized <- communityInputSummarized[rownames(communityInputSummarized) %in% metadata$UniqueID,]
 
 set.seed(1)
 sample_Num <- 15
@@ -188,12 +209,11 @@ indx <- sapply(zetaAnalysis, is.factor)
 zetaAnalysis[indx] <- lapply(zetaAnalysis[indx], function(x) as.numeric(as.character(x)))
 zetaAnalysis <- do.call(data.frame,lapply(zetaAnalysis, function(x) replace(x, is.infinite(x),NA)))
 #Save zeta diversity analysis for a given taxonomic level.
-write.table(zetaAnalysis,paste("zetaAnalysisMorphologicalAlgae",taxonomicLevel,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
+write.table(zetaAnalysis,paste("zetaAnalysis18SV9Algae",taxonomicLevel,".txt",sep=""),quote=FALSE,sep="\t",row.names = FALSE)
 #
 
 ##To run locally.
-taxonomicLevel <- "order"
-zetaAnalysis <- read.table(paste("zetaAnalysisMorphologicalAlgae",taxonomicLevel,".txt",sep=""), header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
+zetaAnalysis <- read.table(paste("zetaAnalysis18SV9Algae",taxonomicLevel,".txt",sep=""), header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
 
 zetaModel <- lm(meanASCI~zeta_1+zeta_2+zeta_N,data=zetaAnalysis)
 plot(zetaModel$model$meanASCI,zetaModel$fitted.values)
@@ -202,18 +222,16 @@ zetaAnalysis$modeledASCI <- zetaModel$fitted.values
 calc.relimp(zetaModel)
 layout(matrix(c(1,2,3,4),2,2)) # optional 4 graphs/page
 plot(zetaModel)
-dev.off()
 
 # Assessing R2 shrinkage using 10-Fold Cross-Validation 
-#require(bootstrap)
+require(bootstrap)
 require(caret)
 set.seed(1)
 train.control <- trainControl(method="repeatedcv",number=10,repeats=10)
 ASCImodel <- train(meanASCI~zeta_1+zeta_2+zeta_N,data=zetaAnalysis,method="lm",trControl=train.control)
-print(cor.test(zetaModel$model$meanASCI,zetaModel$fitted.values))
 print(ASCImodel)
 
-#Comparing mean and modeled ASCI versus environmental parameters
+#Comparing mean and modeled CSCI versus environmental parameters
 zetaVarModel1 <- lm(modeledASCI~meanAL+meanLU+meanDist,data=zetaAnalysis)
 summary(zetaVarModel1)
 calc.relimp(zetaVarModel1)
@@ -223,13 +241,29 @@ summary(zetaVarModel2)
 calc.relimp(zetaVarModel2)
 anova(zetaVarModel2)
 
-#Correlation plots of mean and modeled ASCI scores, zeta diversity measures, and environmental parameters.
+
+require(ggplot2)
+require(viridis)
+zetaPlot <- ggplot(zetaAnalysis, aes(x=meanCSCI,y=modeledCSCI,color=meanLU))+geom_point()+theme(text = element_text(size=25))+geom_smooth(method=glm, aes(fill=modeledCSCI))
+zetaPlot+xlab("Mean CSCI")+ylab("Modeled CSCI")+scale_color_gradientn("Mean LU",colours = rev(plasma(10)))
+zetaPlot <- ggplot(zetaAnalysis, aes(x=meanCSCI,y=modeledCSCI,color=meanAL))+geom_point()+theme(text = element_text(size=25))+geom_smooth(method=glm, aes(fill=modeledCSCI))
+zetaPlot+xlab("Mean CSCI")+ylab("Modeled CSCI")+scale_color_gradientn("Mean AL",colours = rev(plasma(10)))
+zetaPlot <- ggplot(zetaAnalysis, aes(x=meanLU,y=zeta_N,color=meanLU))+geom_point()+theme(text = element_text(size=25))+geom_smooth(method=glm, aes(fill=zeta_N))
+zetaPlot+xlab("Mean LU")+ylab("Zeta_5")+scale_color_gradientn("Mean LU",colours = rev(plasma(10)))
+zetaPlot <- ggplot(zetaAnalysis, aes(x=meanLU,y=PLExp,color=meanN))+geom_point()+theme(text = element_text(size=25))+geom_smooth(method=glm, aes(fill=PLExp))
+zetaPlot+xlab("Mean LU")+ylab("Zeta_1")+scale_color_gradientn("Mean N",colours = rev(plasma(10)))
+
+#Check for correlation patterns between zeta diversity and environmental parameters.
+require("PerformanceAnalytics")
+chart.Correlation(zetaAnalysis[,c("modeledCSCI","meanCSCI","meanLU","meanAL","meanDist","zeta_1","zeta_2","zeta_3","zeta_4","zeta_N")], histogram=TRUE, method="pearson")
+
+#Correlation plots of mean and modeled CSCI scores, zeta diversity measures, and environmental parameters.
 require(Hmisc)
 require(corrplot)
 communityType <- "Algae"
 taxonomicLevels <- c("species","genus","family","order")
 for(taxonomicLevel in taxonomicLevels){
-  zetaAnalysis <- read.table(paste("zetaAnalysisMorphologicalAlgae",taxonomicLevel,".txt",sep=""), header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
+  zetaAnalysis <- read.table(paste("zetaAnalysis18SV9",communityType,taxonomicLevel,".txt",sep=""), header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE, encoding = "UTF-8")
   zetaModel <- lm(meanASCI~zeta_1+zeta_2+zeta_N,data=zetaAnalysis)
   zetaAnalysis$modeledASCI <- zetaModel$fitted.values
   zetaCor <- zetaAnalysis[,c("meanLU","meanAL","meanDist","zeta_1","zeta_2","zeta_N","meanASCI","modeledASCI")]
@@ -238,9 +272,62 @@ for(taxonomicLevel in taxonomicLevels){
   p.mat <- zetaCor$P
   colnames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]","Mean H_ASCI","Modeled H_ASCI")
   rownames(corr) <- c("Land Use","Altitude","Distance",":zeta[1]",":zeta[2]",":zeta[10]","Mean H_ASCI","Modeled H_ASCI")
-  par(xpd=TRUE)
-  png(paste("zetaAnalysisMorphologicalAlgae",taxonomicLevel,".png",sep=""),width=7,height=7,units="in",res=600)
-  corrplot(corr = corr, p.mat = p.mat, diag = FALSE, type="lower", sig.level = 0.0001, tl.col="black", tl.srt=45, tl.cex=1.3, order="original",mar=c(0,0,3,0), cl.align.text = "r")
-  mtext(paste("Morphologically sorted soft-bodied algae aggregated to",taxonomicLevel), at=2.5, line=3, cex=1.3)
-  dev.off() 
+  png(paste("zetaAnalysis18SV9Algae",taxonomicLevel,".png",sep=""),width=7,height=7,units="in",res=600)
+  corrplot(corr = corr, p.mat = p.mat, diag = FALSE, type="lower", sig.level = 0.0001, tl.col="black", tl.srt=45, tl.cex=1.3, order="original",mar=c(0,0,3,0))
+  mtext(paste("18S V9 soft-bodied algae aggregated to",taxonomicLevel), at=2.5, line=3, cex=1.3)
+  dev.off()
 }
+
+#Calculate how much zeta diversity of a particular order decays with distance
+data.spec <- communityInputSummarized[,as.character(metadata$SampleNum)]
+#Create a species/site matrix for use in the zeta diversity functions.
+data.spec <- as.data.frame(t(data.spec))
+zetaDistance <- Zeta.ddecay(xy=metadata[,c("Latitude","Longitude")],data.spec=data.spec,order=5,distance.type="ortho",normalize="Jaccard",plot=FALSE)
+#How strongly correlated is zeta diversity with geographic distance?
+cor.test(zetaDistance$zeta.val,zetaDistance$distance,method="spearman")
+zetaDecay <- Zeta.decline.ex(data.spec,orders=1:zetaMax,rescale=TRUE,plot=TRUE)
+
+#Compare community assembly profiles.
+require(IDPmisc)
+mean(NaRV.omit(zetaAnalysis$ExpAIC))
+mean(NaRV.omit(zetaAnalysis$PLAIC))
+cor.test(zetaAnalysis$meanLU,zetaAnalysis$PLAIC-zetaAnalysis$ExpAIC)
+t.test(NaRV.omit(zetaAnalysis$PLAIC),NaRV.omit(zetaAnalysis$ExpAIC),alternative="two.sided")
+
+#Zeta.varpart returns a data frame with one column containing the variation explained by each component 
+#a (the variation explained by distance alone),
+#b (the variation explained by either distance or the environment),
+#c (the variation explained by the environment alone) and 
+#d (the unexplained variation).
+data.env <- metadata[,c("LU","site_elev")]
+data.env[] <- lapply(data.env,as.numeric)
+rownames(data.env) <- metadata[,c("SampleNum")]
+#data.env <- na.omit(data.env)
+data.xy <- metadata[,c("Longitude","Latitude")]
+rownames(data.xy) <- metadata[,c("SampleNum")]
+data.xy <- data.xy[which(rownames(data.xy) %in% rownames(data.env)),]
+data.spec <- as.data.frame(t(communityInputSummarized))
+tmp <- data.spec[which(rownames(data.spec) %in% rownames(data.xy)),]
+zetaFactors <- Zeta.msgdm(data.spec=tmp,data.env=data.env,xy=data.xy,order=2,reg.type="glm",distance.type="ortho",normalize=FALSE,empty.row=0,rescale=FALSE,control=list(maxit=1000))
+zetaVar <- Zeta.varpart(zetaFactors)
+zetaVar
+
+#Mapping metadata
+require(ggplot2)
+require(ggmap)
+require(maps)
+require(mapview)
+require(mapdata)
+require(munsell)
+require(leaflet)
+require(devtools)
+require(webshot)
+require(viridis)
+#Map data.
+#metadata$Ecoregion <- as.numeric(metadata$LU)
+CalMap = leaflet(metadata) %>% 
+  addTiles()
+ColorScale <- colorNumeric(palette=plasma(10),domain=metadata$LU)
+CalMap %>% addCircleMarkers(color = ~ColorScale(LU), fill = TRUE,radius=5,fillOpacity = 1) %>% 
+  addProviderTiles(providers$Esri.WorldTopoMap) %>%
+  addLegend("topright", pal=ColorScale,values=~Ecoregion,title="SCCWRP sample<br>% Land Use")
